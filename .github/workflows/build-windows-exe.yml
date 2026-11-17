@@ -67,7 +67,7 @@ jobs:
           if-no-files-found: error
 
       - name: Publish ClipForge v0.3.0 release
-        if: github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'release: ClipForge v0.3.0')
+        if: "github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'release: ClipForge v0.3.0')"
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v0.3.0
