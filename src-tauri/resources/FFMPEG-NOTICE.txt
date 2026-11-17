@@ -1,0 +1,6 @@
+ClipForge redistributes a separately built FFmpeg executable.
+FFmpeg is free software; its license and source code are available at:
+https://ffmpeg.org/legal.html
+https://ffmpeg.org/download.html#get-sources
+The Windows build uses the public full GPL distribution from gyan.dev.
+Please consult the FFmpeg distribution archive for its licenses and notices.
