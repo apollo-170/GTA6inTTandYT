@@ -6,15 +6,16 @@ import { openUrl } from '@tauri-apps/plugin-opener';
 export type Tab = 'dashboard'|'streams'|'highlights'|'studio'|'publishing'|'settings';
 export type Channel = { id:string; login:string; display_name:string; enabled:boolean; rights_confirmed:boolean; is_live:boolean; messages:number; last_score:number };
 export type Highlight = {id:number;channel_id:string;channel_login:string;title:string;score:number;length:number;detected_at:string;status:string;clip_id:string|null;clip_url:string|null;source_path:string|null;output_path:string|null;explanation:string|null};
-export type Settings = {client_id:string;demo_mode:boolean;auto_clip:boolean;auto_export:boolean;threshold:number;cooldown_seconds:number;output_dir:string;banner_path:string;ffmpeg_path:string;vision_endpoint:string;vision_model:string};
+export type Settings = {auto_publish:boolean;auto_publish_confirmed:boolean;auto_targets:string[];auto_youtube_privacy:'private'|'unlisted'|'public';auto_tiktok_mode:'MEDIA_UPLOAD'|'DIRECT_POST';auto_daily_limit:number;client_id:string;demo_mode:boolean;auto_clip:boolean;auto_export:boolean;threshold:number;cooldown_seconds:number;output_dir:string;banner_path:string;ffmpeg_path:string;vision_endpoint:string;vision_model:string};
 export type Snapshot = { settings:Settings; channels:Channel[]; highlights:Highlight[]; monitoring:boolean; authenticated_as:string|null };
 export type Device = {device_code:string;user_code:string;verification_uri:string;interval:number};
+export type HostedState={connected:boolean;provider:string;error:string|null};
 export type ConnectedAccount={id:string;name:string;platform:'youtube'|'tiktok'};
 export type PublishResult={account_id:string;account_name:string;platform:'youtube'|'tiktok'|string;state:'queued'|'uploading'|'success'|'draft'|'error';detail:string};
 export type UpdateStatus={current_version:string;latest_version:string|null;available:boolean;can_install:boolean;release_url:string;download_url:string|null;message:string};
 export type UpdateProgress={stage:string;percent:number};
 export type IntegrationDiagnostics={twitch_configured:boolean;twitch_connected:boolean;youtube_configured:boolean;youtube_accounts:number;tiktok_configured:boolean;ffmpeg_ready:boolean;update_feed_public:boolean};
-const defaults:Settings={client_id:'',demo_mode:true,auto_clip:false,auto_export:false,threshold:68,cooldown_seconds:120,output_dir:'',banner_path:'',ffmpeg_path:'ffmpeg',vision_endpoint:'https://api.openai.com/v1/chat/completions',vision_model:''};
+const defaults:Settings={auto_publish:false,auto_publish_confirmed:false,auto_targets:[],auto_youtube_privacy:'private',auto_tiktok_mode:'MEDIA_UPLOAD',auto_daily_limit:5,client_id:'',demo_mode:true,auto_clip:false,auto_export:false,threshold:68,cooldown_seconds:120,output_dir:'',banner_path:'',ffmpeg_path:'ffmpeg',vision_endpoint:'https://api.openai.com/v1/chat/completions',vision_model:''};
 export const desktop=isTauri();
 const key='clipforge-browser-demo-v1';
 let browser:Snapshot=load();
@@ -38,6 +39,11 @@ export async function pickDirectory():Promise<string|null>{if(!desktop)throw Err
 export async function attachVideo(id:number,path:string){if(!desktop)throw Error('Только Windows-приложение');return invoke<void>('attach_video',{id,path})}
 export async function renderVideo(id:number):Promise<string>{if(!desktop)throw Error('FFmpeg доступен в Windows-приложении');return invoke('render_highlight',{id})}
 export async function analyzeVideo(id:number,apiKey:string){if(!desktop)throw Error('Vision доступен в Windows-приложении');return invoke<string>('analyze_highlight',{id,apiKey})}
+export async function hostedStatus():Promise<HostedState>{if(!desktop)return {connected:false,provider:'upload-post',error:'Только в Windows'};return invoke<HostedState>('upload_post_status')}
+export async function hostedSaveKey(apiKey:string):Promise<void>{if(!desktop)throw Error('Только в Windows');return invoke<void>('upload_post_save_key',{apiKey})}
+export async function hostedForgetKey():Promise<void>{if(!desktop)throw Error('Только в Windows');return invoke<void>('upload_post_forget_key')}
+export async function hostedConnect(profile:string):Promise<string>{if(!desktop)throw Error('Только в Windows');return invoke<string>('upload_post_connect',{profile})}
+export async function hostedAccounts():Promise<ConnectedAccount[]>{if(!desktop)return [];return invoke<ConnectedAccount[]>('upload_post_accounts')}
 export async function connectedAccounts():Promise<ConnectedAccount[]>{if(!desktop)return [];return invoke<ConnectedAccount[]>('connected_accounts')}
 export async function beginTikTok():Promise<string>{if(!desktop)throw Error('TikTok OAuth доступен в Windows-приложении');return invoke<string>('tiktok_oauth_start')}
 export async function watchPublishProgress(callback:(result:PublishResult)=>void){if(!desktop)return ()=>{};return listen<PublishResult>('clipforge:publish-progress',e=>callback(e.payload))}

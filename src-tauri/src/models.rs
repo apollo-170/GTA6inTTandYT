@@ -29,6 +29,12 @@ pub struct Highlight {
 }
 #[derive(Clone,Serialize,Deserialize)]
 pub struct Settings {
+ #[serde(default)] pub auto_publish:bool,
+ #[serde(default)] pub auto_publish_confirmed:bool,
+ #[serde(default)] pub auto_targets:Vec<String>,
+ #[serde(default="default_youtube_privacy")] pub auto_youtube_privacy:String,
+ #[serde(default="default_tiktok_mode")] pub auto_tiktok_mode:String,
+ #[serde(default="default_daily_limit")] pub auto_daily_limit:u8,
   pub client_id: String,
   pub demo_mode: bool,
   pub auto_clip: bool,
@@ -41,8 +47,11 @@ pub struct Settings {
   pub vision_endpoint: String,
   pub vision_model: String,
 }
+fn default_youtube_privacy()->String{"private".into()}
+fn default_tiktok_mode()->String{"MEDIA_UPLOAD".into()}
+fn default_daily_limit()->u8{5}
 impl Default for Settings {
-  fn default() -> Self { Self{client_id:String::new(),demo_mode:true,auto_clip:false,auto_export:false,threshold:68,cooldown_seconds:120,output_dir:String::new(),banner_path:String::new(),ffmpeg_path:"ffmpeg".into(),vision_endpoint:"https://api.openai.com/v1/chat/completions".into(),vision_model:String::new()} }
+  fn default() -> Self { Self{auto_publish:false,auto_publish_confirmed:false,auto_targets:Vec::new(),auto_youtube_privacy:default_youtube_privacy(),auto_tiktok_mode:default_tiktok_mode(),auto_daily_limit:default_daily_limit(),client_id:String::new(),demo_mode:true,auto_clip:false,auto_export:false,threshold:68,cooldown_seconds:120,output_dir:String::new(),banner_path:String::new(),ffmpeg_path:"ffmpeg".into(),vision_endpoint:"https://api.openai.com/v1/chat/completions".into(),vision_model:String::new()} }
 }
 #[derive(Serialize)]
 pub struct Snapshot {pub settings:Settings,pub channels:Vec<Channel>,pub highlights:Vec<Highlight>,pub monitoring:bool,pub authenticated_as:Option<String>}

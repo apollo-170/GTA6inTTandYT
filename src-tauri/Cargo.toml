@@ -32,3 +32,6 @@ base64 = "0.22"
 rand = "0.8"
 sha2 = "0.10"
 semver = "1"
+
+[target.'cfg(windows)'.dependencies]
+keyring = { version = "3", features = ["windows-native"] }
