@@ -11,6 +11,10 @@ on:
 permissions:
   contents: write
 
+env:
+  CLIPFORGE_TWITCH_CLIENT_ID: ${{ vars.CLIPFORGE_TWITCH_CLIENT_ID }}
+  CLIPFORGE_YOUTUBE_CLIENT_ID: ${{ vars.CLIPFORGE_YOUTUBE_CLIENT_ID }}
+
 jobs:
   build-windows:
     runs-on: windows-latest
@@ -67,12 +71,12 @@ jobs:
           if-no-files-found: error
 
       - name: Publish ClipForge v0.3.0 release
-        if: "github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'release: ClipForge v0.3.0')"
+        if: "github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'release: ClipForge v0.4.0')"
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v0.3.0
+          tag_name: v0.4.0
           target_commitish: main
-          name: ClipForge v0.3.0 — Windows
+          name: ClipForge v0.4.0 — Windows
           draft: false
           prerelease: true
           fail_on_unmatched_files: true
@@ -80,8 +84,8 @@ jobs:
             src-tauri/target/release/bundle/nsis/*.exe
             ClipForge-Windows-portable.zip
           body: |
-            ## ClipForge v0.3.0 — Windows Preview
-            New dark dashboard, revamped streamer cards, AI event timeline, channel search, and clip-status filters.
+            ## ClipForge v0.4.0 — Windows Preview
+            New simplified login screen for Twitch and YouTube, no manual publishing tokens, GitHub Releases update checker, account disconnect and safer account-based publishing. TikTok sign-in needs a separately deployed OAuth backend and provider approval.
 
             **Windows x64:** Download the `.exe` installer from Assets and run it. A portable build is also attached as a ZIP.
 
