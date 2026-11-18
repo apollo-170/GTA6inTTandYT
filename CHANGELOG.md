@@ -26,3 +26,9 @@
 - Понятная ошибка при попытке мониторить демонстрационные каналы через EventSub
 - GitHub Actions проверяет TypeScript и предупреждает об отсутствующих публичных OAuth Client ID
 - Проверка обновлений и открытие GitHub Releases сохраняются
+
+## v0.4.2
+- В сборку Windows включены предоставленные владельцем публичные Twitch и Google OAuth Client IDs
+- Нормализован Google OAuth Client ID с окончанием `.apps.googleusercontent.com`
+- Проверка формата идентификаторов в GitHub Actions
+- Исправлен цвет уведомления об успешном подключении YouTube

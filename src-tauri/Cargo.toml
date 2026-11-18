@@ -1,6 +1,6 @@
 [package]
 name = "clipforge"
-version = "0.4.1"
+version = "0.4.2"
 description = "Realtime Twitch highlight detector and authorized clip studio"
 authors = ["ClipForge"]
 edition = "2021"
