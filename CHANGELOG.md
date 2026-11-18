@@ -56,3 +56,12 @@
 - TikTok OAuth Bridge: серверное хранение Client Secret, AES-256-GCM для токенов, безопасное сопряжение, обновление access token
 - Отправка TikTok в Inbox drafts по video.upload после подключения одобренного OAuth Bridge
 - GitHub Actions проверяет синтаксис TikTok Bridge, собирает Windows EXE и публикует v0.6.0
+
+## v0.7.0
+- Полный локальный конвейер Twitch чат → официальный Clip → разрешённая загрузка MP4 → FFmpeg Shorts 9:16 → Upload-Post Cloud
+- Несколько TikTok/YouTube профилей без собственного OAuth-сервера; подключение через официальный hosted API
+- Хранение API-ключа Upload-Post в Windows Credential Manager, без сохранения в SQLite/EXE
+- Разрешённая автопубликация с явным подтверждением прав, выбором аккаунтов, видимости и дневным лимитом
+- Исправлено отображение ошибок Twitch Download Clips и статусов автоматической отправки
+- Serverless OTA из приватного GitHub Releases через read-only fine-grained token, защищённый Windows Credential Manager
+- Проверка SHA-256 и запуск EXE только после действия пользователя

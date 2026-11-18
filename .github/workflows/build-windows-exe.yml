@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       publish_release:
-        description: 'Пересобрать Windows EXE и обновить релиз v0.6.0'
+        description: 'Пересобрать Windows EXE и обновить релиз v0.7.0'
         required: false
         default: false
         type: boolean
@@ -113,13 +113,13 @@ jobs:
           path: ClipForge-Windows-portable.zip
           if-no-files-found: error
 
-      - name: Publish ClipForge v0.6.0 release
-        if: "github.ref == 'refs/heads/main' && (startsWith(github.event.head_commit.message, 'release: ClipForge v0.6.0') || (github.event_name == 'workflow_dispatch' && inputs.publish_release))"
+      - name: Publish ClipForge v0.7.0 release
+        if: "github.ref == 'refs/heads/main' && (startsWith(github.event.head_commit.message, 'release: ClipForge v0.7.0') || (github.event_name == 'workflow_dispatch' && inputs.publish_release))"
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v0.6.0
+          tag_name: v0.7.0
           target_commitish: main
-          name: ClipForge v0.6.0 — Windows
+          name: ClipForge v0.7.0 — Windows
           draft: false
           prerelease: true
           overwrite_files: true
@@ -129,9 +129,9 @@ jobs:
             ClipForge-Windows-portable.zip
             ClipForge-Windows-Installer-SHA256.txt
           body: |
-            ## ClipForge v0.6.0 — Windows Preview
-            Multi-account distribution: connect several YouTube channels and authorized TikTok profiles, choose any combination (up to 20 accounts), publish one export per selected profile and inspect independent success/failure statuses. TikTok uploads use creator inbox drafts after the owner deploys an approved, HTTPS OAuth bridge. Direct public TikTok posts are not implemented without video.publish approval. Includes the v0.5 visual redesign and update center.
+            ## ClipForge v0.7.0 — Windows Preview
+            Serverless video automation: Twitch EventSub chat detection, authorized official Clip downloads, FFmpeg vertical editing and unattended Upload-Post Cloud sending to approved selected TikTok and YouTube profiles. API credentials are protected by Windows Credential Manager. Serverless in-app OTA for private GitHub Releases supports a separate read-only fine-grained GitHub token plus GitHub asset SHA-256 validation. User setup is still required: Upload-Post account and compatible TikTok plan, Twitch channel rights, and GitHub read-only token for private-release OTA.
 
             **Windows x64:** Download the `.exe` installer from Assets and run it. A portable build is also attached as a ZIP.
 
-            **Important:** Preview release. Twitch authentication and access rights are required for live events and authorized clips. Continuous live vision/audio detection and TikTok Direct Post are not implemented. Multi-TikTok draft upload requires a separately deployed HTTPS OAuth bridge and provider permissions. YouTube sign-in requires the application owner's Google OAuth Client ID; TikTok requires an approved server-side integration. The software is not production-ready. Use only footage you are allowed to reuse.
+            **Important:** Preview release. Twitch authentication and access rights are required for live events and authorized clips. Clip selection is based on Twitch chat events (not continuous AI video analysis). Unattended publishing requires a running Windows computer, approved account connections and explicit per-channel publishing consent. TikTok Direct Post through Upload-Post depends on platform authorization, account capabilities and service plan; draft mode requires finishing the post in TikTok. YouTube sign-in requires the application owner's Google OAuth Client ID; TikTok requires an approved server-side integration. The software is not production-ready. Use only footage you are allowed to reuse.
