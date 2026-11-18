@@ -68,7 +68,15 @@ async fn twitch_device_poll(state:State<'_,AppState>)->Result<Option<LoggedIn>,S
  let device=state.auth.lock().await.device.clone().ok_or("Сначала начни авторизацию")?;
  let result=twitch::device_poll(&twitch_id(&settings),&device.device_code).await?;
  if let Some((token,user))=result{
-  let mut auth=state.auth.lock().await;auth.token=token;auth.user=Some(user.clone());auth.device=None;
+  {
+    let mut auth=state.auth.lock().await;
+    auth.token=token;auth.user=Some(user.clone());auth.device=None;
+   }
+   let mut live_settings=state.database.lock().await.settings()?;
+   if live_settings.demo_mode {
+    live_settings.demo_mode=false;
+    state.database.lock().await.save_settings(&live_settings)?;
+   }
   Ok(Some(user))
  }else{Ok(None)}
 }
@@ -152,6 +160,10 @@ async fn start_monitor(app:AppHandle)->Result<(),String>{
  let channels=state.database.lock().await.channels()?;
  if !channels.iter().any(|c|c.enabled){state.monitor.store(false,Ordering::Relaxed);return Err("Добавь и включи Twitch-канал".into())}
  if settings.demo_mode{notify(&app);return Ok(())}
+ if channels.iter().any(|c|c.enabled && c.id.starts_with("demo:")){
+  state.monitor.store(false,Ordering::Relaxed);
+  return Err("После входа в Twitch удали демонстрационные каналы и добавь настоящие Twitch-каналы заново.".into())
+ }
  let auth=state.auth.lock().await;
  let user=match auth.user.as_ref(){Some(u)=>u.user_id.clone(),None=>{state.monitor.store(false,Ordering::Relaxed);return Err("Подключи Twitch-аккаунт".into())}};
  let token=auth.token.clone();drop(auth);
