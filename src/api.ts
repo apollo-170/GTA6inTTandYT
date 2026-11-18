@@ -3,7 +3,7 @@ import { listen } from '@tauri-apps/api/event';
 import { open } from '@tauri-apps/plugin-dialog';
 import { openUrl } from '@tauri-apps/plugin-opener';
 
-export type Tab = 'dashboard'|'streams'|'highlights'|'studio'|'publishing'|'settings';
+export type Tab = 'dashboard'|'streams'|'highlights'|'vod'|'studio'|'publishing'|'settings';
 export type Channel = { id:string; login:string; display_name:string; enabled:boolean; rights_confirmed:boolean; is_live:boolean; messages:number; last_score:number };
 export type Highlight = {id:number;channel_id:string;channel_login:string;title:string;score:number;length:number;detected_at:string;status:string;clip_id:string|null;clip_url:string|null;source_path:string|null;output_path:string|null;explanation:string|null};
 export type Settings = {auto_tiktok_privacy:'SELF_ONLY'|'FOLLOWER_OF_CREATOR'|'MUTUAL_FOLLOW_FRIENDS'|'PUBLIC_TO_EVERYONE';auto_publish:boolean;auto_publish_confirmed:boolean;auto_targets:string[];auto_youtube_privacy:'private'|'unlisted'|'public';auto_tiktok_mode:'MEDIA_UPLOAD'|'DIRECT_POST';auto_daily_limit:number;client_id:string;demo_mode:boolean;auto_clip:boolean;auto_export:boolean;threshold:number;cooldown_seconds:number;output_dir:string;banner_path:string;ffmpeg_path:string;vision_endpoint:string;vision_model:string};
@@ -72,3 +72,11 @@ export async function checkUpdates():Promise<UpdateStatus>{if(!desktop)return {c
 export async function publishVideo(id:number,accountId:string,title:string,privacy:string,confirmed:boolean){if(!desktop)throw Error('Публикация доступна в Windows-приложении');return invoke<string>('publish_highlight',{id,accountId,title,privacy,confirmed})}
 export async function externalUrl(url:string){if(desktop){await openUrl(url)}else{window.open(url,'_blank','noopener,noreferrer')}}
 export async function watchRefresh(refresh:()=>void,notice:(str:string)=>void,connected?:(str:string)=>void){if(!desktop)return ()=>{};const a=await listen('clipforge:refresh',refresh);const b=await listen<string>('clipforge:notice',(e)=>notice(e.payload));const c=await listen<string>('clipforge:connected',(e)=>(connected||notice)(e.payload));return ()=>{a();b();c()}}
+
+export type VodInfo={path:string;duration:number;size:number;name:string};
+export async function vodInfo(path:string):Promise<VodInfo>{if(!desktop)throw Error('VOD доступен в Windows-приложении');return invoke<VodInfo>('vod_info',{path})}
+export async function vodFrame(path:string,at:number):Promise<string>{if(!desktop)throw Error('Предпросмотр доступен в Windows-приложении');return invoke<string>('vod_frame',{path,at})}
+export async function vodCut(path:string,start:number,end:number,vertical:boolean):Promise<string>{if(!desktop)throw Error('Монтаж доступен в Windows-приложении');return invoke<string>('vod_cut',{path,start,end,vertical})}
+export async function vodYouTubeUpload(path:string,accountIds:string[],title:string,privacy:string,confirmed:boolean):Promise<string[]>{if(!desktop)throw Error('Загрузка доступна в Windows-приложении');return invoke<string[]>('vod_youtube_upload',{path,accountIds,title,privacy,confirmed})}
+
+export async function vodOpen(path:string):Promise<void>{if(!desktop)throw Error('Доступно в Windows-приложении');return invoke<void>('vod_open',{path})}
