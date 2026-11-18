@@ -44,7 +44,7 @@ pub fn status()->TikTokStatus{
 }
 pub fn configure(key:&str,secret:&str)->Result<(),String>{
  let key=key.trim();let secret=secret.trim();
- if key.len()<8||key.len()>160||secret.len()<12||secret.len()>250||key.contains(char::is_whitespace)||secret.contains(char::is_whitespace){
+ if key.len()<8||key.len()>160||secret.len()<12||secret.len()>250||key.chars().any(char::is_whitespace)||secret.chars().any(char::is_whitespace){
   return Err("Проверь Client Key и Client Secret TikTok Developer".into())
  }
  cred(CRED_APP,"client_key")?.set_password(key).map_err(|e|e.to_string())?;
@@ -135,7 +135,7 @@ async fn finish_oauth(code:&str,verifier:&str)->Result<TikTokAccount,String>{
 }
 struct LoginGuard;
 impl Drop for LoginGuard{fn drop(&mut self){LOGIN.store(false,Ordering::SeqCst);}}
-pub async fn begin_login(app:AppHandle)->Result<String,String>{
+pub async fn begin_login(app:AppHandle,direct:bool)->Result<String,String>{
  let (key,_)=app_credentials()?;
  if LOGIN.swap(true,Ordering::SeqCst){return Err("Авторизация TikTok уже открыта".into())}
  let listener=match TcpListener::bind("127.0.0.1:34865").await{
@@ -146,7 +146,7 @@ pub async fn begin_login(app:AppHandle)->Result<String,String>{
  let challenge=format!("{:x}",Sha256::digest(verifier.as_bytes()));
  let mut url=url::Url::parse("https://www.tiktok.com/v2/auth/authorize/").map_err(|e|e.to_string())?;
  url.query_pairs_mut().append_pair("client_key",&key)
-  .append_pair("scope","user.info.basic,video.upload,video.publish")
+  .append_pair("scope",if direct{"user.info.basic,video.publish"}else{"user.info.basic,video.upload"})
   .append_pair("response_type","code")
   .append_pair("redirect_uri",CALLBACK)
   .append_pair("state",&state)
@@ -188,7 +188,7 @@ pub async fn begin_login(app:AppHandle)->Result<String,String>{
    Err(_)=>{let _=app.emit("clipforge:notice","TikTok: время авторизации истекло");}
   }
  });
- Ok(url.into())
+ Ok(url.to_string())
 }
 async fn access(id:&str,required:&str)->Result<String,String>{
  let mut account=load(id)?;
@@ -233,7 +233,7 @@ async fn upload_chunks(path:&str,url:&str)->Result<(),String>{
  }
  let size=tokio::fs::metadata(path).await.map_err(|e|e.to_string())?.len();
  if size==0||size>LIMIT{return Err("TikTok MP4 должен быть меньше 500 МБ".into())}
- let chunk=10_000_000u64;
+ let chunk=if size<10_000_000{size}else{10_000_000u64};
  let count=size.div_ceil(chunk);
  let mut file=tokio::fs::File::open(path).await.map_err(|e|e.to_string())?;
  let client=http()?;
@@ -264,8 +264,9 @@ pub async fn publish(path:&str,id:&str,title:&str,privacy:&str)->Result<PostResu
  }else if privacy!="SELF_ONLY"{
   return Err("У TikTok есть только разрешение на черновики. Для прямой публикации нужен video.publish".into())
  }
- let chunks=file.len().div_ceil(10_000_000u64);
- let source=json!({"source":"FILE_UPLOAD","video_size":file.len(),"chunk_size":10_000_000u64,"total_chunk_count":chunks});
+ let chunk_size=file.len().min(10_000_000u64);
+ let chunks=file.len().div_ceil(chunk_size);
+ let source=json!({"source":"FILE_UPLOAD","video_size":file.len(),"chunk_size":chunk_size,"total_chunk_count":chunks});
  let init=if direct{"https://open.tiktokapis.com/v2/post/publish/video/init/"}
   else{"https://open.tiktokapis.com/v2/post/publish/inbox/video/init/"};
  let request=if direct{
