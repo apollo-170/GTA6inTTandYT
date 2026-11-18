@@ -1,4 +1,4 @@
-mod models;mod db;mod scoring;mod twitch;mod export;mod publisher;mod vision;mod ffmpeg;
+mod models;mod db;mod scoring;mod twitch;mod export;mod publisher;mod vision;mod ffmpeg;mod social;mod updates;
 use chrono::Utc;
 use futures_util::StreamExt;
 use models::{Channel,Highlight,Settings,Snapshot,TwitchDevice,LoggedIn};
@@ -13,7 +13,9 @@ struct Auth {token:String,user:Option<LoggedIn>,device:Option<TwitchDevice>}
 struct AppState {
  database:Mutex<db::Database>,auth:Mutex<Auth>,detector:Mutex<Detector>,
  counts:Mutex<HashMap<String,u64>>,monitor:Arc<AtomicBool>,worker:Mutex<Option<tokio::task::JoinHandle<()>>>,
+ accounts:social::Accounts,
 }
+fn twitch_id(settings:&Settings)->String{option_env!("CLIPFORGE_TWITCH_CLIENT_ID").filter(|s|!s.trim().is_empty()).unwrap_or(&settings.client_id).to_owned()}
 fn notify(app:&AppHandle){let _=app.emit("clipforge:refresh",());}
 fn alert(app:&AppHandle,message:&str){let _=app.emit("clipforge:notice",message.to_owned());}
 
@@ -41,7 +43,7 @@ async fn add_channel(state:State<'_,AppState>,login:String)->Result<Channel,Stri
  }else{
    let auth=state.auth.lock().await;
    if auth.token.is_empty(){return Err("Сначала подключи Twitch в Настройках".into())}
-   twitch::resolve_channel(&settings.client_id,&auth.token,&login).await?
+   twitch::resolve_channel(&twitch_id(&settings),&auth.token,&login).await?
  };
  state.database.lock().await.save_channel(&channel)?;
  Ok(channel)
@@ -57,14 +59,14 @@ async fn update_channel(state:State<'_,AppState>,id:String,enabled:bool,rights_c
 #[tauri::command]
 async fn twitch_device_start(state:State<'_,AppState>)->Result<TwitchDevice,String>{
  let settings=state.database.lock().await.settings()?;
- let result=twitch::device_start(&settings.client_id).await?;
+ let result=twitch::device_start(&twitch_id(&settings)).await?;
  state.auth.lock().await.device=Some(result.clone());Ok(result)
 }
 #[tauri::command]
 async fn twitch_device_poll(state:State<'_,AppState>)->Result<Option<LoggedIn>,String>{
  let settings=state.database.lock().await.settings()?;
  let device=state.auth.lock().await.device.clone().ok_or("Сначала начни авторизацию")?;
- let result=twitch::device_poll(&settings.client_id,&device.device_code).await?;
+ let result=twitch::device_poll(&twitch_id(&settings),&device.device_code).await?;
  if let Some((token,user))=result{
   let mut auth=state.auth.lock().await;auth.token=token;auth.user=Some(user.clone());auth.device=None;
   Ok(Some(user))
@@ -154,7 +156,7 @@ async fn start_monitor(app:AppHandle)->Result<(),String>{
  let user=match auth.user.as_ref(){Some(u)=>u.user_id.clone(),None=>{state.monitor.store(false,Ordering::Relaxed);return Err("Подключи Twitch-аккаунт".into())}};
  let token=auth.token.clone();drop(auth);
  let running=state.monitor.clone();
- let task=tokio::spawn(monitor_task(app.clone(),channels,settings.client_id,token,user,running));
+ let task=tokio::spawn(monitor_task(app.clone(),channels,twitch_id(&settings),token,user,running));
  *state.worker.lock().await=Some(task);
  notify(&app);Ok(())
 }
@@ -179,24 +181,24 @@ async fn create_for_id(app:&AppHandle,id:i64)->Result<(),String>{
  let auth=state.auth.lock().await;let token=auth.token.clone();let user=auth.user.clone();drop(auth);
  if token.is_empty(){return Err("Twitch не авторизован".into())}
  let clip_id=if let Some(ref user)=user {
-   match twitch::create_vod_clip(&settings.client_id,&token,&h.channel_id,&user.user_id,&h.title,&h.detected_at,h.length,scoring::post_seconds(h.score)).await {
+   match twitch::create_vod_clip(&twitch_id(&settings),&token,&h.channel_id,&user.user_id,&h.title,&h.detected_at,h.length,scoring::post_seconds(h.score)).await {
      Ok(id)=>id,
      Err(e)=>{
        let age=chrono::DateTime::parse_from_rfc3339(&h.detected_at).map(|t|(Utc::now().fixed_offset()-t).num_seconds()).unwrap_or(i64::MAX);
        if age>50 {return Err(format!("Точное VOD-окно недоступно ({}); поздно создавать live-клип",e))}
-       twitch::create_clip(&settings.client_id,&token,&h.channel_id,&h.title,h.length).await?
+       twitch::create_clip(&twitch_id(&settings),&token,&h.channel_id,&h.title,h.length).await?
      }
    }
- }else{twitch::create_clip(&settings.client_id,&token,&h.channel_id,&h.title,h.length).await?};
+ }else{twitch::create_clip(&twitch_id(&settings),&token,&h.channel_id,&h.title,h.length).await?};
  let mut h=h;h.clip_id=Some(clip_id.clone());h.status="creating".into();state.database.lock().await.save_highlight(&h)?;notify(app);
  for _ in 0..12{
   tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-  if let Ok(Some(url))=twitch::clip_url(&settings.client_id,&token,&clip_id).await{
+  if let Ok(Some(url))=twitch::clip_url(&twitch_id(&settings),&token,&clip_id).await{
     h.clip_url=Some(url);h.status="clip_ready".into();state.database.lock().await.save_highlight(&h)?;notify(app);
     // Download is possible only if this user is broadcaster/editor with the required scopes.
     if let Some(user)=user{
      let dest=dirs::video_dir().unwrap_or_else(std::env::temp_dir).join("ClipForge").join(format!("twitch_{}.mp4",clip_id));
-     if twitch::download_clip(&settings.client_id,&token,&h.channel_id,&user.user_id,&clip_id,&dest).await.is_ok(){
+     if twitch::download_clip(&twitch_id(&settings),&token,&h.channel_id,&user.user_id,&clip_id,&dest).await.is_ok(){
       h.source_path=Some(dest.to_string_lossy().to_string());h.status="downloaded".into();state.database.lock().await.save_highlight(&h)?;notify(app);
       if settings.auto_export{
        let input=h.source_path.clone().unwrap_or_default();let ss=settings.clone();let name=format!("{}_{}",h.channel_login,h.id);
@@ -240,11 +242,26 @@ async fn analyze_highlight(app:AppHandle,id:i64,api_key:String)->Result<String,S
  h.explanation=Some(format!("Vision: {} ({}); чат + кадр",desc,score));
  state.database.lock().await.save_highlight(&h)?;notify(&app);Ok(desc)
 }
+
 #[tauri::command]
-async fn publish_highlight(app:AppHandle,id:i64,platform:String,access_token:String,title:String,privacy:String,confirmed:bool)->Result<String,String>{
+async fn connected_accounts(state:State<'_,AppState>)->Result<Vec<social::AccountView>,String>{Ok(state.accounts.list().await)}
+#[tauri::command]
+async fn youtube_oauth_start(app:AppHandle)->Result<String,String>{social::begin_youtube(app).await}
+#[tauri::command]
+async fn disconnect_social_account(app:AppHandle,id:String)->Result<(),String>{
+ let st=app.state::<AppState>();
+ if !st.accounts.disconnect(&id).await{return Err("Аккаунт не найден".into())}
+ notify(&app);Ok(())
+}
+#[tauri::command]
+async fn update_check()->Result<updates::UpdateStatus,String>{updates::check().await}
+
+#[tauri::command]
+async fn publish_highlight(app:AppHandle,id:i64,account_id:String,title:String,privacy:String,confirmed:bool)->Result<String,String>{
  if !confirmed{return Err("Публикация требует подтверждения пользователя".into())}
  let state=app.state::<AppState>();let mut h=state.database.lock().await.highlight(id)?;
  let path=h.output_path.clone().ok_or("Сначала сделай вертикальный экспорт")?;
+ let (platform,access_token)=social::token_for(&state.accounts,&account_id).await?;
  let response=match platform.as_str(){
  "youtube"=>publisher::youtube_upload(&path,&access_token,&title,&privacy).await?,
  "tiktok"=>publisher::tiktok_draft(&path,&access_token).await?,
@@ -257,7 +274,7 @@ async fn publish_highlight(app:AppHandle,id:i64,platform:String,access_token:Str
 pub fn run(){
  let database=db::Database::open().expect("Cannot open ClipForge SQLite database");
  tauri::Builder::default().plugin(tauri_plugin_dialog::init()).plugin(tauri_plugin_opener::init())
- .manage(AppState{database:Mutex::new(database),auth:Mutex::new(Auth{token:String::new(),user:None,device:None}),detector:Mutex::new(Detector::default()),counts:Mutex::new(HashMap::new()),monitor:Arc::new(AtomicBool::new(false)),worker:Mutex::new(None)})
- .invoke_handler(tauri::generate_handler![snapshot,save_settings,add_channel,remove_channel,update_channel,twitch_device_start,twitch_device_poll,disconnect_twitch,start_monitor,stop_monitor,demo_burst,create_twitch_clip,attach_video,render_highlight,analyze_highlight,publish_highlight])
+ .manage(AppState{database:Mutex::new(database),auth:Mutex::new(Auth{token:String::new(),user:None,device:None}),detector:Mutex::new(Detector::default()),counts:Mutex::new(HashMap::new()),monitor:Arc::new(AtomicBool::new(false)),worker:Mutex::new(None),accounts:social::Accounts::new()})
+ .invoke_handler(tauri::generate_handler![snapshot,save_settings,add_channel,remove_channel,update_channel,twitch_device_start,twitch_device_poll,disconnect_twitch,start_monitor,stop_monitor,demo_burst,create_twitch_clip,attach_video,render_highlight,analyze_highlight,publish_highlight,connected_accounts,youtube_oauth_start,disconnect_social_account,update_check])
  .run(tauri::generate_context!()).expect("Tauri startup failed");
 }
