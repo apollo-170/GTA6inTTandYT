@@ -26,7 +26,7 @@ export default function VodStudio({accounts}:Props){
   <div className="vod-hero"><span>VOD EDITOR · FULL STREAM + CLIPS</span><h1>Записи стримов</h1><p>Просматривай полную запись по кадрам, выбирай фрагменты на таймлайне и загружай на YouTube. Всё обрабатывается локально, без платного сервера.</p></div>
   <div className="vod-layout">
    <section className="vod-panel"><h2>01 / Исходный стрим</h2><button className="vod-primary" disabled={!!busy} onClick={load}>{busy==='load'?'Открываю…':'Выбрать запись стрима'}</button>
-   {vod?<><div className="vod-file"><b>{vod.name}</b><small>{fmt(vod.duration)} · {(vod.size/1024**3).toFixed(2)} ГБ</small></div>
+   {vod?<><div className="vod-file"><b>{vod.name}</b><small>{fmt(vod.duration)} · {(vod.size/1024**3).toFixed(2)} ГБ</small></div><button className="vod-secondary" onClick={()=>run("open",()=>api.vodOpen(vod.path))}>▶ Просмотреть весь стрим в видеоплеере</button>
    <div className="vod-preview">{frame?<img src={frame} alt="Кадр записи стрима"/>:<span>Кадр ещё не загружен</span>}</div>
    <div className="vod-timing"><span>Позиция {fmt(seek)}</span><strong>{fmt(vod.duration)}</strong></div>
    <input aria-label="Позиция просмотра" type="range" min={0} max={Math.max(0.1,vod.duration-0.01)} step={1} value={seek} onChange={e=>setSeek(Number(e.target.value))}/>
