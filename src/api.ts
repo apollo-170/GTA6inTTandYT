@@ -6,16 +6,18 @@ import { openUrl } from '@tauri-apps/plugin-opener';
 export type Tab = 'dashboard'|'streams'|'highlights'|'studio'|'publishing'|'settings';
 export type Channel = { id:string; login:string; display_name:string; enabled:boolean; rights_confirmed:boolean; is_live:boolean; messages:number; last_score:number };
 export type Highlight = {id:number;channel_id:string;channel_login:string;title:string;score:number;length:number;detected_at:string;status:string;clip_id:string|null;clip_url:string|null;source_path:string|null;output_path:string|null;explanation:string|null};
-export type Settings = {auto_publish:boolean;auto_publish_confirmed:boolean;auto_targets:string[];auto_youtube_privacy:'private'|'unlisted'|'public';auto_tiktok_mode:'MEDIA_UPLOAD'|'DIRECT_POST';auto_daily_limit:number;client_id:string;demo_mode:boolean;auto_clip:boolean;auto_export:boolean;threshold:number;cooldown_seconds:number;output_dir:string;banner_path:string;ffmpeg_path:string;vision_endpoint:string;vision_model:string};
+export type Settings = {auto_tiktok_privacy:'SELF_ONLY'|'FOLLOWER_OF_CREATOR'|'MUTUAL_FOLLOW_FRIENDS'|'PUBLIC_TO_EVERYONE';auto_publish:boolean;auto_publish_confirmed:boolean;auto_targets:string[];auto_youtube_privacy:'private'|'unlisted'|'public';auto_tiktok_mode:'MEDIA_UPLOAD'|'DIRECT_POST';auto_daily_limit:number;client_id:string;demo_mode:boolean;auto_clip:boolean;auto_export:boolean;threshold:number;cooldown_seconds:number;output_dir:string;banner_path:string;ffmpeg_path:string;vision_endpoint:string;vision_model:string};
 export type Snapshot = { settings:Settings; channels:Channel[]; highlights:Highlight[]; monitoring:boolean; authenticated_as:string|null };
 export type Device = {device_code:string;user_code:string;verification_uri:string;interval:number};
+export type TikTokNativeStatus={configured:boolean;connected:number;redirect_uri:string};
+export type TikTokCreator={name:string;privacy_levels:string[];max_duration:number;comments_disabled:boolean;duet_disabled:boolean;stitch_disabled:boolean};
 export type HostedState={connected:boolean;provider:string;error:string|null};
 export type ConnectedAccount={id:string;name:string;platform:'youtube'|'tiktok'};
 export type PublishResult={account_id:string;account_name:string;platform:'youtube'|'tiktok'|string;state:'queued'|'uploading'|'success'|'draft'|'error';detail:string};
 export type UpdateStatus={current_version:string;latest_version:string|null;available:boolean;can_install:boolean;release_url:string;download_url:string|null;message:string};
 export type UpdateProgress={stage:string;percent:number};
 export type IntegrationDiagnostics={twitch_configured:boolean;twitch_connected:boolean;youtube_configured:boolean;youtube_accounts:number;tiktok_configured:boolean;ffmpeg_ready:boolean;update_feed_public:boolean};
-const defaults:Settings={auto_publish:false,auto_publish_confirmed:false,auto_targets:[],auto_youtube_privacy:'private',auto_tiktok_mode:'MEDIA_UPLOAD',auto_daily_limit:5,client_id:'',demo_mode:true,auto_clip:false,auto_export:false,threshold:68,cooldown_seconds:120,output_dir:'',banner_path:'',ffmpeg_path:'ffmpeg',vision_endpoint:'https://api.openai.com/v1/chat/completions',vision_model:''};
+const defaults:Settings={auto_tiktok_privacy:'SELF_ONLY',auto_publish:false,auto_publish_confirmed:false,auto_targets:[],auto_youtube_privacy:'private',auto_tiktok_mode:'MEDIA_UPLOAD',auto_daily_limit:5,client_id:'',demo_mode:true,auto_clip:false,auto_export:false,threshold:68,cooldown_seconds:120,output_dir:'',banner_path:'',ffmpeg_path:'ffmpeg',vision_endpoint:'https://api.openai.com/v1/chat/completions',vision_model:''};
 export const desktop=isTauri();
 const key='clipforge-browser-demo-v1';
 let browser:Snapshot=load();
@@ -42,6 +44,10 @@ export async function analyzeVideo(id:number,apiKey:string){if(!desktop)throw Er
 export async function githubUpdateTokenStatus():Promise<boolean>{if(!desktop)return false;return invoke<boolean>('github_update_token_status')}
 export async function githubUpdateTokenSave(token:string):Promise<void>{if(!desktop)throw Error('Только Windows');return invoke<void>('github_update_token_save',{token})}
 export async function githubUpdateTokenForget():Promise<void>{if(!desktop)throw Error('Только Windows');return invoke<void>('github_update_token_forget')}
+export async function tiktokNativeStatus():Promise<TikTokNativeStatus>{if(!desktop)return {configured:false,connected:0,redirect_uri:''};return invoke<TikTokNativeStatus>('tiktok_native_status')}
+export async function tiktokNativeConfigure(key:string,secret:string):Promise<void>{if(!desktop)throw Error('Нужен ClipForge для Windows');return invoke('tiktok_native_configure',{key,secret})}
+export async function tiktokNativeConnect(direct:boolean):Promise<string>{if(!desktop)throw Error('Нужен ClipForge для Windows');return invoke('tiktok_native_connect',{direct})}
+export async function tiktokNativeCreator(id:string):Promise<TikTokCreator>{if(!desktop)throw Error('Нужен ClipForge для Windows');return invoke<TikTokCreator>('tiktok_native_creator',{id})}
 export async function hostedStatus():Promise<HostedState>{if(!desktop)return {connected:false,provider:'upload-post',error:'Только в Windows'};return invoke<HostedState>('upload_post_status')}
 export async function hostedSaveKey(apiKey:string):Promise<void>{if(!desktop)throw Error('Только в Windows');return invoke<void>('upload_post_save_key',{apiKey})}
 export async function hostedForgetKey():Promise<void>{if(!desktop)throw Error('Только в Windows');return invoke<void>('upload_post_forget_key')}
