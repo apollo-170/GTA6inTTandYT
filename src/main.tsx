@@ -1,4 +1,4 @@
-import React,{useCallback,useEffect,useMemo,useState} from 'react';
+import React,{useCallback,useEffect,useMemo,useRef,useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import {Activity,ArrowDownToLine,ArrowRight,BarChart3,Bell,Bolt,Check,CheckCheck,ChevronDown,ChevronRight,CircleAlert,CircleCheck,Clock3,CloudUpload,Clapperboard,Copy,ExternalLink,Eye,FileVideo,FolderOpen,Gauge,HardDrive,LayoutDashboard,Link2,Search,LoaderCircle,LockKeyhole,MessageSquare,MonitorPlay,MoreVertical,Pause,Play,Plus,Radio,RefreshCw,Scissors,Send,Settings2,ShieldCheck,SlidersHorizontal,Sparkles,Trash2,Upload,Video,Wifi,WifiOff,X,Youtube} from 'lucide-react';
 import * as api from './api';
@@ -34,13 +34,14 @@ function App(){
  const [selected,setSelected]=useState<number|null>(null);const [toast,setToast]=useState<{message:string;kind:'good'|'bad'}|null>(null);
  const [pending,setPending]=useState('');const [device,setDevice]=useState<Device|null>(null);const [visionKey,setVisionKey]=useState('');
  const [accounts,setAccounts]=useState<Account[]>([]);const [updateStatus,setUpdateStatus]=useState<UpdateStatus|null>(null);const [checkingUpdate,setCheckingUpdate]=useState(false);
+ const notifiedUpdateVersion=useRef<string|null>(null);
  const [integrations,setIntegrations]=useState<api.IntegrationDiagnostics|null>(null);const [checkingIntegrations,setCheckingIntegrations]=useState(false);
  const [publishTitle,setPublishTitle]=useState('');const [privacy,setPrivacy]=useState('private');const [publishAgreed,setPublishAgreed]=useState(false);
  const inform=useCallback((message:string,kind:'good'|'bad'='good')=>setToast({message,kind}),[]);
  const refresh=useCallback(async()=>{try{const [s,linked]=await Promise.all([api.getSnapshot(),api.connectedAccounts()]);setData(s);setSettings(s.settings);setAccounts(old=>linked.map(item=>({...item,selected:old.find(o=>o.id===item.id)?.selected??true})));}catch(err){inform(String(err),'bad')}},[inform]);
  useEffect(()=>{void refresh();let cleanup:(()=>void)|undefined;void api.watchRefresh(()=>{void refresh()},(s)=>inform(s,'bad'),(s)=>inform(s,'good')).then(un=>cleanup=un);return()=>cleanup?.()},[refresh,inform]);
  useEffect(()=>{if(!toast)return;const id=setTimeout(()=>setToast(null),8000);return()=>clearTimeout(id)},[toast]);
- useEffect(()=>{if(api.desktop){void api.checkUpdates().then(setUpdateStatus).catch(()=>{});void api.integrationDiagnostics().then(setIntegrations).catch(()=>{});}},[]);
+ useEffect(()=>{if(api.desktop)void api.integrationDiagnostics().then(setIntegrations).catch(()=>{});},[]);
  useEffect(()=>{if(!device)return;let running=true;const t=setInterval(()=>{void api.pollDevice().then(user=>{if(user&&running){setDevice(null);inform(`Twitch подключён: ${user.display_name}`);void refresh()}}).catch(e=>{if(running){setDevice(null);inform(String(e),'bad')}})},Math.max(5,device.interval)*1000);return()=>{running=false;clearInterval(t)}},[device,inform,refresh]);
  const run=useCallback(async(key:string,fn:()=>Promise<unknown>,success?:string)=>{setPending(key);try{await fn();if(success)inform(success);await refresh()}catch(err){inform(err instanceof Error?err.message:String(err),'bad')}finally{setPending('')}},[inform,refresh]);
  const current=data.highlights.find(h=>h.id===selected)||data.highlights[0]||null;
@@ -62,7 +63,7 @@ function App(){
  const connectYouTube=()=>run('youtube',async()=>{const url=await api.beginYouTube();await api.externalUrl(url)},'Открыта авторизация YouTube в браузере');
  const checkForUpdates=async()=>{setCheckingUpdate(true);try{const status=await api.checkUpdates();setUpdateStatus(status);inform(status.available?'Доступно обновление '+status.latest_version:status.message)}catch(e){inform(String(e),'bad')}finally{setCheckingUpdate(false)}};
  const openTwitchShare=(h:Highlight)=>{if(!h.clip_url){inform('Сначала создай Twitch-клип. Для публикации в YouTube Shorts и TikTok открой готовый клип и выбери «Поделиться».','bad');return}void api.externalUrl(h.clip_url)};
- useEffect(()=>{if(!api.desktop)return;let enabled=true;const check=()=>{void api.checkUpdates().then(status=>{if(!enabled)return;setUpdateStatus(old=>{if(status.available&&status.latest_version!==old?.latest_version)inform('Доступно обновление ClipForge '+status.latest_version);return status})}).catch(()=>{})};const interval=setInterval(check,30*60*1000);const focus=()=>check();window.addEventListener('focus',focus);return()=>{enabled=false;clearInterval(interval);window.removeEventListener('focus',focus)}},[inform]);
+ useEffect(()=>{if(!api.desktop)return;let enabled=true;const check=()=>{void api.checkUpdates().then(status=>{if(!enabled)return;if(status.available&&status.latest_version!==notifiedUpdateVersion.current){notifiedUpdateVersion.current=status.latest_version;inform('Доступно обновление ClipForge '+status.latest_version)}setUpdateStatus(status)}).catch(()=>{})};check();const interval=setInterval(check,30*60*1000);const focus=()=>check();window.addEventListener('focus',focus);return()=>{enabled=false;clearInterval(interval);window.removeEventListener('focus',focus)}},[inform]);
  const checkConnections=async()=>{setCheckingIntegrations(true);try{setIntegrations(await api.integrationDiagnostics());inform('Проверка подключений завершена')}catch(e){inform(String(e),'bad')}finally{setCheckingIntegrations(false)}};
  const typeBadge=api.desktop?'Windows / Tauri':'Веб-предпросмотр';
  const featureList=useMemo(()=>[{icon:MessageSquare,text:'Мониторинг чата',detail:'EventSub WebSocket'},{icon:Bolt,text:'Умный детектор',detail:'Анализ всплесков'},{icon:Video,text:'Формат Shorts',detail:'FFmpeg · 9:16'},{icon:Upload,text:'Публикация',detail:'YouTube + TikTok Draft'}],[]);
