@@ -296,6 +296,12 @@ async fn upload_post_connect(profile:String)->Result<String,String>{upload_post:
 #[tauri::command]
 async fn upload_post_accounts()->Result<Vec<social::AccountView>,String>{upload_post::accounts().await}
 #[tauri::command]
+async fn github_update_token_status()->bool{updates::configured()}
+#[tauri::command]
+async fn github_update_token_save(token:String)->Result<(),String>{updates::save_token(token).await}
+#[tauri::command]
+async fn github_update_token_forget()->Result<(),String>{updates::clear_token().await}
+#[tauri::command]
 async fn youtube_oauth_start(app:AppHandle)->Result<String,String>{social::begin_youtube(app).await}
 #[tauri::command]
 async fn tiktok_oauth_start(app:AppHandle)->Result<String,String>{social::begin_tiktok(app).await}
@@ -428,6 +434,6 @@ pub fn run(){
  let database=db::Database::open().expect("Cannot open ClipForge SQLite database");
  tauri::Builder::default().plugin(tauri_plugin_dialog::init()).plugin(tauri_plugin_opener::init())
  .manage(AppState{database:Mutex::new(database),auth:Mutex::new(Auth{token:String::new(),user:None,device:None}),detector:Mutex::new(Detector::default()),counts:Mutex::new(HashMap::new()),monitor:Arc::new(AtomicBool::new(false)),worker:Mutex::new(None),accounts:social::Accounts::new(),publishing:AtomicBool::new(false)})
- .invoke_handler(tauri::generate_handler![snapshot,save_settings,add_channel,remove_channel,update_channel,twitch_device_start,twitch_device_poll,disconnect_twitch,start_monitor,stop_monitor,demo_burst,create_twitch_clip,attach_video,render_highlight,analyze_highlight,publish_highlight,publish_batch,connected_accounts,upload_post_status,upload_post_save_key,upload_post_forget_key,upload_post_connect,upload_post_accounts,youtube_oauth_start,tiktok_oauth_start,disconnect_social_account,update_check,update_install,integration_diagnostics])
+ .invoke_handler(tauri::generate_handler![snapshot,save_settings,add_channel,remove_channel,update_channel,twitch_device_start,twitch_device_poll,disconnect_twitch,start_monitor,stop_monitor,demo_burst,create_twitch_clip,attach_video,render_highlight,analyze_highlight,publish_highlight,publish_batch,connected_accounts,upload_post_status,upload_post_save_key,upload_post_forget_key,upload_post_connect,upload_post_accounts,github_update_token_status,github_update_token_save,github_update_token_forget,youtube_oauth_start,tiktok_oauth_start,disconnect_social_account,update_check,update_install,integration_diagnostics])
  .run(tauri::generate_context!()).expect("Tauri startup failed");
 }
