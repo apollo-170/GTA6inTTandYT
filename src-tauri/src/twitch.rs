@@ -28,8 +28,9 @@ pub async fn device_poll(client_id:&str,device_code:&str)->Result<Option<(String
  ]).send().await.map_err(|e|e.to_string())?;
  let status=res.status();let v:Value=res.json().await.map_err(|e|e.to_string())?;
  if !status.is_success(){
-  let error=v["message"].as_str().or(v["error"].as_str()).unwrap_or("OAuth error");
-  if error.contains("authorization_pending")||error.contains("slow_down"){return Ok(None)}
+  let error=v["error"].as_str().or(v["message"].as_str()).unwrap_or("OAuth error");
+  let normalized=error.to_ascii_lowercase().replace(' ',"_");
+  if normalized.contains("authorization_pending")||normalized.contains("slow_down"){return Ok(None)}
   return Err(error.to_string());
  }
  let token=v["access_token"].as_str().ok_or("Не найден access_token")?.to_string();
