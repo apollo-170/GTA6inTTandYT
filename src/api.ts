@@ -3,7 +3,7 @@ import { listen } from '@tauri-apps/api/event';
 import { open } from '@tauri-apps/plugin-dialog';
 import { openUrl } from '@tauri-apps/plugin-opener';
 
-export type Tab = 'dashboard'|'streams'|'highlights'|'studio'|'publishing'|'settings';
+export type Tab = 'dashboard'|'streams'|'highlights'|'vod'|'studio'|'publishing'|'settings';
 export type Channel = { id:string; login:string; display_name:string; enabled:boolean; rights_confirmed:boolean; is_live:boolean; messages:number; last_score:number };
 export type Highlight = {id:number;channel_id:string;channel_login:string;title:string;score:number;length:number;detected_at:string;status:string;clip_id:string|null;clip_url:string|null;source_path:string|null;output_path:string|null;explanation:string|null};
 export type Settings = {auto_tiktok_privacy:'SELF_ONLY'|'FOLLOWER_OF_CREATOR'|'MUTUAL_FOLLOW_FRIENDS'|'PUBLIC_TO_EVERYONE';auto_publish:boolean;auto_publish_confirmed:boolean;auto_targets:string[];auto_youtube_privacy:'private'|'unlisted'|'public';auto_tiktok_mode:'MEDIA_UPLOAD'|'DIRECT_POST';auto_daily_limit:number;client_id:string;demo_mode:boolean;auto_clip:boolean;auto_export:boolean;threshold:number;cooldown_seconds:number;output_dir:string;banner_path:string;ffmpeg_path:string;vision_endpoint:string;vision_model:string};
