@@ -15,13 +15,16 @@ fn validate(path:&str)->Result<PathBuf,String>{
 fn tools(app:&AppHandle)->Result<(PathBuf,PathBuf),String>{
  let settings=app.state::<AppState>().database.try_lock().map_err(|_|"Настройки заняты; повтори действие".to_owned())?.settings()?;
  let ffmpeg=crate::ffmpeg::executable(&settings.ffmpeg_path);
- let ffprobe=ffmpeg.with_file_name(if cfg!(windows){"ffprobe.exe"}else{"ffprobe"});
+ let ffprobe=ffmpeg.clone();
  Ok((ffmpeg,ffprobe))
 }
 fn probe_duration(ffprobe:&Path,path:&Path)->Result<f64,String>{
- let out=Command::new(ffprobe).args(["-v","error","-show_entries","format=duration","-of","default=noprint_wrappers=1:nokey=1"]).arg(path).output().map_err(|e|format!("Для VOD нужен FFprobe рядом с FFmpeg: {e}"))?;
- if !out.status.success(){return Err("FFprobe не смог прочитать длительность видео".into())}
- let v=String::from_utf8_lossy(&out.stdout).trim().parse::<f64>().map_err(|_|"Не удалось определить длительность".to_string())?;
+ let out=Command::new(ffprobe).arg("-hide_banner").arg("-i").arg(path).output().map_err(|e|format!("Не удалось запустить FFmpeg: {e}"))?;
+ let detail=String::from_utf8_lossy(&out.stderr);
+ let duration=detail.split("Duration: ").nth(1).and_then(|s|s.split(',').next()).ok_or("FFmpeg не обнаружил длительность VOD")?;
+ let parts:Vec<f64>=duration.trim().split(':').map(|s|s.parse::<f64>().unwrap_or(f64::NAN)).collect();
+ if parts.len()!=3{return Err("Не удалось прочитать длительность файла".into())}
+ let v=parts[0]*3600.0+parts[1]*60.0+parts[2];
  if !v.is_finite()||v<=0.0{return Err("Некорректная длительность файла".into())}
  Ok(v)
 }
@@ -79,6 +82,7 @@ pub async fn vod_youtube_upload(app:AppHandle,path:String,account_ids:Vec<String
  let unique:std::collections::HashSet<&String>=account_ids.iter().collect();
  if unique.len()!=account_ids.len(){return Err("YouTube аккаунты должны быть уникальны".into())}
  let p=validate(&path)?;
+ if p.extension().and_then(|s|s.to_str()).unwrap_or("").to_lowercase()!="mp4"{return Err("Для публикации целого стрима нужен MP4. Для нарезок доступны другие форматы.".into())}
  let st=app.state::<AppState>();
  if st.publishing.compare_exchange(false,true,Ordering::Acquire,Ordering::Relaxed).is_err(){return Err("Уже выполняется публикация".into())}
  let _guard=PublishingGuard(&st.publishing);
