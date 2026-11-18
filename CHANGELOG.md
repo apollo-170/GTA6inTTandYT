@@ -39,3 +39,12 @@
 - Allow creating a Twitch Clip directly from the Publishing tab when one is not ready
 - Periodic update checks (startup, every 30 minutes, window focus) and deduplicated in-app notices when the update API is reachable
 - Clarifies private repository update limitations without silently installing unsigned executables
+
+## v0.5.0
+- Новый лаконичный дизайн graphite/emerald и реальные показатели мониторинга
+- Центр обновлений, уведомление внутри приложения, проверка каждые 30 минут и при фокусе
+- Загрузка Windows EXE из доверенного GitHub Releases, прогресс и проверка SHA-256 перед запуском установщика
+- Установщик запускается только после подтверждения пользователя
+- Кнопка публикации в TikTok через официальный Twitch Connections
+- SHA-256 установщика прикладывается к новому GitHub Release
+- Приватный GitHub по-прежнему требует входа в браузере; без публичного канала приложение не может проверить версию автоматически

@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       publish_release:
-        description: 'Пересобрать Windows EXE и обновить релиз v0.4.3'
+        description: 'Пересобрать Windows EXE и обновить релиз v0.5.0'
         required: false
         default: false
         type: boolean
@@ -86,6 +86,15 @@ jobs:
           Copy-Item src-tauri\resources\FFMPEG-NOTICE.txt portable\resources\FFMPEG-NOTICE.txt
           Compress-Archive -Path portable\* -DestinationPath ClipForge-Windows-portable.zip -Force
 
+      - name: Generate Windows EXE checksum
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem "src-tauri/target/release/bundle/nsis/*.exe" | Select-Object -First 1
+          if (-not $installer) { throw "Windows EXE not found" }
+          $sha = (Get-FileHash -Path $installer.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$sha  $($installer.Name)" | Set-Content -Path "ClipForge-Windows-Installer-SHA256.txt" -Encoding ascii
+          Write-Host "Installer SHA256 generated"
+
       - name: Upload Windows EXE installer
         uses: actions/upload-artifact@v4
         with:
@@ -100,13 +109,13 @@ jobs:
           path: ClipForge-Windows-portable.zip
           if-no-files-found: error
 
-      - name: Publish ClipForge v0.4.3 release
-        if: "github.ref == 'refs/heads/main' && (startsWith(github.event.head_commit.message, 'release: ClipForge v0.4.3') || (github.event_name == 'workflow_dispatch' && inputs.publish_release))"
+      - name: Publish ClipForge v0.5.0 release
+        if: "github.ref == 'refs/heads/main' && (startsWith(github.event.head_commit.message, 'release: ClipForge v0.5.0') || (github.event_name == 'workflow_dispatch' && inputs.publish_release))"
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v0.4.3
+          tag_name: v0.5.0
           target_commitish: main
-          name: ClipForge v0.4.3 — Windows
+          name: ClipForge v0.5.0 — Windows
           draft: false
           prerelease: true
           overwrite_files: true
@@ -114,9 +123,10 @@ jobs:
           files: |
             src-tauri/target/release/bundle/nsis/*.exe
             ClipForge-Windows-portable.zip
+            ClipForge-Windows-Installer-SHA256.txt
           body: |
-            ## ClipForge v0.4.3 — Windows Preview
-            Native Twitch clip sharing shortcut for YouTube Shorts and TikTok via official Twitch browser, background checks every 30 minutes and on window focus, with a one-click jump to GitHub Releases. OAuth IDs and earlier features retained.
+            ## ClipForge v0.5.0 — Windows Preview
+            Refined dark studio design and in-app update center with progress and SHA-256 verification. Automatic version checks run at startup, every 30 minutes, and on focus. When public GitHub releases are reachable, ClipForge can download and launch a verified Windows installer with one click. GitHub release assets and hashes are preserved.
 
             **Windows x64:** Download the `.exe` installer from Assets and run it. A portable build is also attached as a ZIP.
 
