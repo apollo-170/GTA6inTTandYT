@@ -98,3 +98,16 @@ pub async fn vod_youtube_upload(app:AppHandle,path:String,account_ids:Vec<String
  }
  Ok(results)
 }
+
+#[tauri::command]
+pub async fn vod_open(path:String)->Result<(),String>{
+ let p=validate(&path)?;
+ #[cfg(target_os="windows")]
+ let mut cmd=Command::new("explorer.exe");
+ #[cfg(target_os="macos")]
+ let mut cmd=Command::new("open");
+ #[cfg(all(not(target_os="windows"),not(target_os="macos")))]
+ let mut cmd=Command::new("xdg-open");
+ cmd.arg(p).spawn().map_err(|e|format!("Не удалось открыть запись в видеоплеере: {e}"))?;
+ Ok(())
+}
