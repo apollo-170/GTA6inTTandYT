@@ -249,13 +249,18 @@ async fn upload_chunks(path:&str,url:&str)->Result<(),String>{
  }
  Ok(())
 }
-pub async fn publish(path:&str,id:&str,title:&str,privacy:&str)->Result<PostResult,String>{
+pub async fn publish(path:&str,id:&str,title:&str,privacy:&str,mode:&str)->Result<PostResult,String>{
+ if !["DIRECT_POST","MEDIA_UPLOAD"].contains(&mode){return Err("Режим TikTok не поддерживается".into())}
  if title.trim().is_empty(){return Err("Укажи название TikTok ролика".into())}
  let file=tokio::fs::metadata(path).await.map_err(|e|e.to_string())?;
  if !file.is_file()||file.len()==0||file.len()>LIMIT{return Err("Неверный размер MP4 (до 500 МБ)".into())}
  let account=load(id)?;
- let direct=account.scopes.split(',').any(|v|v.trim()=="video.publish");
- let token=access(id,if direct{"video.publish"}else{"video.upload"}).await?;
+ let direct=mode=="DIRECT_POST";
+ let required=if direct{"video.publish"}else{"video.upload"};
+ if !account.scopes.split(',').any(|v|v.trim()==required){
+  return Err(format!("Аккаунт не разрешил {required}. Переподключи его в соответствующем режиме."))
+ }
+ let token=access(id,required).await?;
  let info=if direct{Some(creator(id).await?)}else{None};
  if let Some(ref creator)=info{
   if !creator.privacy_levels.iter().any(|v|v==privacy){
