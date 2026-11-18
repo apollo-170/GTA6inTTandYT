@@ -4,7 +4,7 @@ use std::sync::atomic::Ordering;
 use tauri::{AppHandle,Emitter,Manager};
 
 /// Runs only for a real Twitch clip with channel publishing rights and the owner's
-/// explicit automatic-publishing consent. Uses the hosted Upload-Post service.
+/// explicit automatic-publishing consent. Direct YouTube is free; hosted integrations are optional.
 pub async fn process(app:AppHandle,id:i64)->Result<(),String>{
  let st=app.state::<AppState>();
  let config=st.database.lock().await.settings()?;
@@ -40,22 +40,36 @@ pub async fn process(app:AppHandle,id:i64)->Result<(),String>{
  crate::notify(&app);
  let mut success=0usize;
  let mut failed=0usize;
+ let linked=st.accounts.list().await;
  for target in &config.auto_targets{
-  let (profile,platform)=crate::upload_post::target_parts(target)?;
-  let label=profile.to_string();
+  let (label,platform)=if target.starts_with("youtube:"){
+   (linked.iter().find(|a|a.id==*target).map(|a|a.name.clone()).unwrap_or_else(||"YouTube".into()),"youtube".to_string())
+  }else{
+   let (profile,platform)=crate::upload_post::target_parts(target)?;
+   (profile.to_string(),platform.to_string())
+  };
   let _=app.emit("clipforge:publish-progress",PublishOutcome{
    account_id:target.clone(),account_name:label.clone(),
-   platform:platform.into(),state:"uploading".into(),detail:"Автоматическая загрузка".into()
+   platform:platform.clone(),state:"uploading".into(),detail:"Автоматическая загрузка".into()
   });
-  let uploaded=crate::upload_post::send_video(&path,target,&clip.title,
-   &config.auto_youtube_privacy,&config.auto_tiktok_mode).await;
+  let uploaded:Result<(String,String),String>=async{
+   if target.starts_with("youtube:"){
+    let (platform,access_token)=crate::social::token_for(&st.accounts,target).await?;
+    if platform!="youtube"{return Err("Неверный тип аккаунта".into())}
+    let link=crate::publisher::youtube_upload(&path,&access_token,&clip.title,&config.auto_youtube_privacy).await?;
+    Ok(("success".into(),format!("YouTube: {link}")))
+   }else{
+    let result=crate::upload_post::send_video(&path,target,&clip.title,
+     &config.auto_youtube_privacy,&config.auto_tiktok_mode).await?;
+    Ok((result.state,result.detail))
+   }
+  }.await;
   let result=match uploaded{
-   Ok(res)=>{success+=1;PublishOutcome{
-    account_id:target.clone(),account_name:label,platform:platform.into(),
-    state:res.state,detail:res.detail
+   Ok((state,detail))=>{success+=1;PublishOutcome{
+    account_id:target.clone(),account_name:label,platform:platform.clone(),state,detail
    }},
    Err(err)=>{failed+=1;PublishOutcome{
-    account_id:target.clone(),account_name:label,platform:platform.into(),
+    account_id:target.clone(),account_name:label,platform:platform.clone(),
     state:"error".into(),detail:err.chars().take(400).collect()
    }},
   };
@@ -65,6 +79,6 @@ pub async fn process(app:AppHandle,id:i64)->Result<(),String>{
  st.database.lock().await.save_highlight(&clip)?;
  crate::notify(&app);
  let _=app.emit("clipforge:connected",format!(
-  "Автозагрузка: {success} из {} профилей приняли видео (в том числе возможны задачи в очереди). Проверь статусы в Upload-Post.",config.auto_targets.len()));
+  "Автозагрузка: {success} из {} аккаунтов приняли видео. Проверяй статусы на вкладке публикации.",config.auto_targets.len()));
  Ok(())
 }
