@@ -62,7 +62,7 @@ pub async fn process(app:AppHandle,id:i64)->Result<(),String>{
     let link=crate::publisher::youtube_upload(&path,&access_token,&clip.title,&config.auto_youtube_privacy).await?;
     Ok(("success".into(),format!("YouTube: {link}")))
    }else if target.starts_with("tt:"){
-    let result=crate::tiktok_native::publish(&path,target,&clip.title,&config.auto_tiktok_privacy).await?;
+    let result=crate::tiktok_native::publish(&path,target,&clip.title,&config.auto_tiktok_privacy,&config.auto_tiktok_mode).await?;
     Ok((result.state,result.detail))
    }else{
     let result=crate::upload_post::send_video(&path,target,&clip.title,

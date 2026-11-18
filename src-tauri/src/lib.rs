@@ -377,7 +377,8 @@ impl Drop for PublishingGuard<'_>{
  fn drop(&mut self){self.0.store(false,Ordering::Release);}
 }
 #[tauri::command]
-async fn publish_batch(app:AppHandle,id:i64,account_ids:Vec<String>,title:String,privacy:String,tiktok_privacy:String,confirmed:bool)->Result<Vec<PublishOutcome>,String>{
+async fn publish_batch(app:AppHandle,id:i64,account_ids:Vec<String>,title:String,privacy:String,tiktok_privacy:String,tiktok_mode:String,confirmed:bool)->Result<Vec<PublishOutcome>,String>{
+ if !["MEDIA_UPLOAD","DIRECT_POST"].contains(&tiktok_mode.as_str()){return Err("Некорректный режим TikTok".into())}
  if !["SELF_ONLY","FOLLOWER_OF_CREATOR","MUTUAL_FOLLOW_FRIENDS","PUBLIC_TO_EVERYONE"].contains(&tiktok_privacy.as_str()){return Err("Неверная видимость TikTok".into())}
  if !confirmed{return Err("Перед публикацией подтверди права на ролик".into())}
  if title.trim().is_empty(){return Err("Введи название ролика".into())}
@@ -408,7 +409,7 @@ async fn publish_batch(app:AppHandle,id:i64,account_ids:Vec<String>,title:String
   let _=app.emit("clipforge:publish-progress",progress);
   let response:Result<(String,String),String>=async {
    if account_id.starts_with("tt:"){
-    let posted=tiktok_native::publish(&path,account_id,&title,&tiktok_privacy).await?;
+    let posted=tiktok_native::publish(&path,account_id,&title,&tiktok_privacy,&tiktok_mode).await?;
     return Ok((posted.state,posted.detail))
    }
    if account_id.starts_with("up:"){

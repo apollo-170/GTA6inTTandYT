@@ -56,9 +56,9 @@ export async function hostedAccounts():Promise<ConnectedAccount[]>{if(!desktop)r
 export async function connectedAccounts():Promise<ConnectedAccount[]>{if(!desktop)return [];return invoke<ConnectedAccount[]>('connected_accounts')}
 export async function beginTikTok():Promise<string>{if(!desktop)throw Error('TikTok OAuth доступен в Windows-приложении');return invoke<string>('tiktok_oauth_start')}
 export async function watchPublishProgress(callback:(result:PublishResult)=>void){if(!desktop)return ()=>{};return listen<PublishResult>('clipforge:publish-progress',e=>callback(e.payload))}
-export async function publishBatch(id:number,accountIds:string[],title:string,privacy:string,tiktokPrivacy:string,confirmed:boolean):Promise<PublishResult[]>{
+export async function publishBatch(id:number,accountIds:string[],title:string,privacy:string,tiktokPrivacy:string,tiktokMode:string,confirmed:boolean):Promise<PublishResult[]>{
  if(!desktop)throw Error('Публикация доступна в Windows-приложении');
- return invoke<PublishResult[]>('publish_batch',{id,accountIds,title,privacy,tiktokPrivacy,confirmed});
+ return invoke<PublishResult[]>('publish_batch',{id,accountIds,title,privacy,tiktokPrivacy,tiktokMode,confirmed});
 }
 export async function beginYouTube():Promise<string>{if(!desktop)throw Error('OAuth доступен в Windows-приложении');return invoke<string>('youtube_oauth_start')}
 export async function removeAccount(id:string):Promise<void>{if(!desktop)throw Error('Только в Windows-приложении');return invoke('disconnect_social_account',{id})}
