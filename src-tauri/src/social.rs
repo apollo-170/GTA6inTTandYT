@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Serialize,Deserialize};
 use std::{sync::atomic::{AtomicBool,Ordering}, time::Duration, collections::HashSet};
 use tauri::{AppHandle,Emitter,Manager};
 use tokio::{io::{AsyncReadExt,AsyncWriteExt},net::TcpListener,sync::Mutex};
@@ -9,17 +9,71 @@ use serde_json::Value;
 
 #[derive(Clone,Serialize)]
 pub struct AccountView { pub id:String,pub name:String,pub platform:String }
-#[derive(Clone)]
+#[derive(Clone,Serialize,Deserialize)]
 pub struct AccountToken { pub id:String,pub name:String,pub platform:String,pub access_token:String,pub refresh_token:String,pub expiry:i64 }
 pub struct Accounts { pub items:Mutex<Vec<AccountToken>>, pub youtube_pending:AtomicBool, pub tiktok_pending:AtomicBool, pub tiktok_pair:Mutex<Option<String>> }
 impl Accounts {
- pub fn new()->Self{Self{items:Mutex::new(Vec::new()),youtube_pending:AtomicBool::new(false),tiktok_pending:AtomicBool::new(false),tiktok_pair:Mutex::new(None)}}
+ pub fn new()->Self{Self{items:Mutex::new(stored_youtube_accounts()),youtube_pending:AtomicBool::new(false),tiktok_pending:AtomicBool::new(false),tiktok_pair:Mutex::new(None)}}
  pub async fn list(&self)->Vec<AccountView>{self.items.lock().await.iter().map(|a|AccountView{id:a.id.clone(),name:a.name.clone(),platform:a.platform.clone()}).collect()}
  pub async fn disconnect(&self,id:&str)->bool{
   let mut accounts=self.items.lock().await;
-  let count=accounts.len();accounts.retain(|a|a.id!=id);count!=accounts.len()
+  let count=accounts.len();accounts.retain(|a|a.id!=id);
+  let removed=count!=accounts.len();
+  if removed && id.starts_with("youtube:"){forget_youtube_account(id);}
+  removed
  }
 }
+
+const YT_SECRET_SERVICE:&str="ClipForge.GoogleOAuth.Tokens";
+const YT_INDEX_SERVICE:&str="ClipForge.GoogleOAuth.Index";
+const YT_INDEX_USER:&str="connected-channels";
+
+#[cfg(windows)]
+fn get_saved_youtube_ids()->Vec<String>{
+ let Ok(index)=keyring::Entry::new(YT_INDEX_SERVICE,YT_INDEX_USER)else{return Vec::new()};
+ let Ok(raw)=index.get_password()else{return Vec::new()};
+ let ids:Vec<String>=serde_json::from_str(&raw).unwrap_or_default();
+ ids.into_iter().filter(|id|id.starts_with("youtube:")&&id.len()<160).take(40).collect()
+}
+#[cfg(windows)]
+fn stored_youtube_accounts()->Vec<AccountToken>{
+ let mut loaded=Vec::new();
+ for id in get_saved_youtube_ids(){
+  let Ok(credential)=keyring::Entry::new(YT_SECRET_SERVICE,&id)else{continue};
+  let Ok(data)=credential.get_password()else{continue};
+  if let Ok(acc)=serde_json::from_str::<AccountToken>(&data){
+   if acc.id==id&&acc.platform=="youtube"&&!acc.refresh_token.is_empty(){loaded.push(acc)}
+  }
+ }
+ loaded
+}
+#[cfg(not(windows))]
+fn stored_youtube_accounts()->Vec<AccountToken>{Vec::new()}
+#[cfg(windows)]
+fn remember_youtube_account(account:&AccountToken)->Result<(),String>{
+ if account.platform!="youtube"||!account.id.starts_with("youtube:"){return Err("Некорректный Google OAuth аккаунт".into())}
+ let token=keyring::Entry::new(YT_SECRET_SERVICE,&account.id).map_err(|e|e.to_string())?;
+ let json=serde_json::to_string(account).map_err(|e|e.to_string())?;
+ token.set_password(&json).map_err(|e|format!("Windows Credential Manager: {e}"))?;
+ let mut ids=get_saved_youtube_ids();
+ if !ids.contains(&account.id){ids.push(account.id.clone())}
+ let index=keyring::Entry::new(YT_INDEX_SERVICE,YT_INDEX_USER).map_err(|e|e.to_string())?;
+ index.set_password(&serde_json::to_string(&ids).map_err(|e|e.to_string())?).map_err(|e|e.to_string())
+}
+#[cfg(not(windows))]
+fn remember_youtube_account(_account:&AccountToken)->Result<(),String>{Ok(())}
+#[cfg(windows)]
+fn forget_youtube_account(id:&str){
+ if let Ok(token)=keyring::Entry::new(YT_SECRET_SERVICE,id){let _=token.delete_credential();}
+ let mut ids=get_saved_youtube_ids();
+ ids.retain(|item|item!=id);
+ if let Ok(index)=keyring::Entry::new(YT_INDEX_SERVICE,YT_INDEX_USER){
+  let _=index.set_password(&serde_json::to_string(&ids).unwrap_or_else(|_|"[]".to_string()));
+ }
+}
+#[cfg(not(windows))]
+fn forget_youtube_account(_id:&str){}
+
 fn random(len:usize)->String{rand::thread_rng().sample_iter(&Alphanumeric).take(len).map(char::from).collect()}
 fn youtube_id()->Result<&'static str,String>{
  option_env!("CLIPFORGE_YOUTUBE_CLIENT_ID").filter(|s|!s.trim().is_empty())
@@ -53,8 +107,11 @@ pub async fn begin_youtube(app:AppHandle)->Result<String,String>{
     let name=account.name.clone();
     let mut items=st.accounts.items.lock().await;
     items.retain(|a|a.id!=account.id);
-    items.push(account);
+    items.push(account.clone());
     drop(items);
+    if let Err(e)=remember_youtube_account(&account){
+     let _=app.emit("clipforge:notice",format!("YouTube подключён, но Windows не сохранил токен: {e}"));
+    }
     let _=app.emit("clipforge:refresh",());
     let _=app.emit("clipforge:connected",format!("YouTube: {name} подключён"));
    }
@@ -228,6 +285,7 @@ pub async fn token_for(store:&Accounts,id:&str)->Result<(String,String),String>{
   if !status.is_success(){return Err(format!("YouTube: нужно повторно войти (HTTP {status})"))}
   account.access_token=data["access_token"].as_str().ok_or("Google не вернул новый токен")?.to_owned();
   account.expiry=chrono::Utc::now().timestamp()+data["expires_in"].as_i64().unwrap_or(3600);
+  let _=remember_youtube_account(account);
  }
  Ok((account.platform.clone(),account.access_token.clone()))
 }
