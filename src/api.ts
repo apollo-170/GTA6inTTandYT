@@ -39,6 +39,9 @@ export async function pickDirectory():Promise<string|null>{if(!desktop)throw Err
 export async function attachVideo(id:number,path:string){if(!desktop)throw Error('Только Windows-приложение');return invoke<void>('attach_video',{id,path})}
 export async function renderVideo(id:number):Promise<string>{if(!desktop)throw Error('FFmpeg доступен в Windows-приложении');return invoke('render_highlight',{id})}
 export async function analyzeVideo(id:number,apiKey:string){if(!desktop)throw Error('Vision доступен в Windows-приложении');return invoke<string>('analyze_highlight',{id,apiKey})}
+export async function githubUpdateTokenStatus():Promise<boolean>{if(!desktop)return false;return invoke<boolean>('github_update_token_status')}
+export async function githubUpdateTokenSave(token:string):Promise<void>{if(!desktop)throw Error('Только Windows');return invoke<void>('github_update_token_save',{token})}
+export async function githubUpdateTokenForget():Promise<void>{if(!desktop)throw Error('Только Windows');return invoke<void>('github_update_token_forget')}
 export async function hostedStatus():Promise<HostedState>{if(!desktop)return {connected:false,provider:'upload-post',error:'Только в Windows'};return invoke<HostedState>('upload_post_status')}
 export async function hostedSaveKey(apiKey:string):Promise<void>{if(!desktop)throw Error('Только в Windows');return invoke<void>('upload_post_save_key',{apiKey})}
 export async function hostedForgetKey():Promise<void>{if(!desktop)throw Error('Только в Windows');return invoke<void>('upload_post_forget_key')}
