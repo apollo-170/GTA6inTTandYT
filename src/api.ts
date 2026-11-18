@@ -78,3 +78,5 @@ export async function vodInfo(path:string):Promise<VodInfo>{if(!desktop)throw Er
 export async function vodFrame(path:string,at:number):Promise<string>{if(!desktop)throw Error('Предпросмотр доступен в Windows-приложении');return invoke<string>('vod_frame',{path,at})}
 export async function vodCut(path:string,start:number,end:number,vertical:boolean):Promise<string>{if(!desktop)throw Error('Монтаж доступен в Windows-приложении');return invoke<string>('vod_cut',{path,start,end,vertical})}
 export async function vodYouTubeUpload(path:string,accountIds:string[],title:string,privacy:string,confirmed:boolean):Promise<string[]>{if(!desktop)throw Error('Загрузка доступна в Windows-приложении');return invoke<string[]>('vod_youtube_upload',{path,accountIds,title,privacy,confirmed})}
+
+export async function vodOpen(path:string):Promise<void>{if(!desktop)throw Error('Доступно в Windows-приложении');return invoke<void>('vod_open',{path})}
