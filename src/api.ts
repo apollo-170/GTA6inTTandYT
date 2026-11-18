@@ -10,7 +10,8 @@ export type Settings = {client_id:string;demo_mode:boolean;auto_clip:boolean;aut
 export type Snapshot = { settings:Settings; channels:Channel[]; highlights:Highlight[]; monitoring:boolean; authenticated_as:string|null };
 export type Device = {device_code:string;user_code:string;verification_uri:string;interval:number};
 export type ConnectedAccount={id:string;name:string;platform:'youtube'|'tiktok'};
-export type UpdateStatus={current_version:string;latest_version:string|null;available:boolean;release_url:string;download_url:string|null;message:string};
+export type UpdateStatus={current_version:string;latest_version:string|null;available:boolean;can_install:boolean;release_url:string;download_url:string|null;message:string};
+export type UpdateProgress={stage:string;percent:number};
 export type IntegrationDiagnostics={twitch_configured:boolean;twitch_connected:boolean;youtube_configured:boolean;youtube_accounts:number;tiktok_configured:boolean;ffmpeg_ready:boolean;update_feed_public:boolean};
 const defaults:Settings={client_id:'',demo_mode:true,auto_clip:false,auto_export:false,threshold:68,cooldown_seconds:120,output_dir:'',banner_path:'',ffmpeg_path:'ffmpeg',vision_endpoint:'https://api.openai.com/v1/chat/completions',vision_model:''};
 export const desktop=isTauri();
@@ -43,7 +44,9 @@ export async function integrationDiagnostics():Promise<IntegrationDiagnostics>{
  if(!desktop)return {twitch_configured:false,twitch_connected:false,youtube_configured:false,youtube_accounts:0,tiktok_configured:false,ffmpeg_ready:false,update_feed_public:false};
  return invoke<IntegrationDiagnostics>('integration_diagnostics')
 }
-export async function checkUpdates():Promise<UpdateStatus>{if(!desktop)return {current_version:'0.4.3',latest_version:null,available:false,release_url:'https://github.com/apollo-170/GTA6inTTandYT/releases',download_url:null,message:'Проверка обновлений доступна в Windows-приложении'};return invoke<UpdateStatus>('update_check')}
+export async function installUpdate():Promise<string>{if(!desktop)throw Error('Автообновление доступно только в Windows');return invoke<string>('update_install')}
+export async function watchUpdateProgress(callback:(progress:UpdateProgress)=>void){if(!desktop)return ()=>{};return listen<UpdateProgress>('clipforge:update-progress',e=>callback(e.payload))}
+export async function checkUpdates():Promise<UpdateStatus>{if(!desktop)return {current_version:'0.4.3',latest_version:null,available:false,can_install:false,release_url:'https://github.com/apollo-170/GTA6inTTandYT/releases',download_url:null,message:'Проверка обновлений доступна в Windows-приложении'};return invoke<UpdateStatus>('update_check')}
 export async function publishVideo(id:number,accountId:string,title:string,privacy:string,confirmed:boolean){if(!desktop)throw Error('Публикация доступна в Windows-приложении');return invoke<string>('publish_highlight',{id,accountId,title,privacy,confirmed})}
 export async function externalUrl(url:string){if(desktop){await openUrl(url)}else{window.open(url,'_blank','noopener,noreferrer')}}
 export async function watchRefresh(refresh:()=>void,notice:(str:string)=>void,connected?:(str:string)=>void){if(!desktop)return ()=>{};const a=await listen('clipforge:refresh',refresh);const b=await listen<string>('clipforge:notice',(e)=>notice(e.payload));const c=await listen<string>('clipforge:connected',(e)=>(connected||notice)(e.payload));return ()=>{a();b();c()}}
