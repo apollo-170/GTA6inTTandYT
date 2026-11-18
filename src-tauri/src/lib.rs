@@ -36,9 +36,20 @@ async fn save_settings(state:State<'_,AppState>,settings:Settings)->Result<(),St
  if !["private","unlisted","public"].contains(&settings.auto_youtube_privacy.as_str())||!["MEDIA_UPLOAD","DIRECT_POST"].contains(&settings.auto_tiktok_mode.as_str()){return Err("Некорректный режим публикации".into())}
  if settings.auto_publish{
   if settings.demo_mode||!settings.auto_clip||!settings.auto_export||!settings.auto_publish_confirmed{return Err("Включи реальный Twitch, авто-клип, экспорт и подтверди права".into())}
-  if settings.auto_targets.is_empty()||settings.auto_targets.len()>20{return Err("Для автопубликации выбери 1–20 профилей Upload-Post".into())}
-  for target in &settings.auto_targets{upload_post::target_parts(target)?;}
-  if !upload_post::configured().await{return Err("Сначала подключи API-ключ Upload-Post в Windows Credential Manager".into())}
+  if settings.auto_targets.is_empty()||settings.auto_targets.len()>20{return Err("Для автопубликации выбери 1–20 каналов YouTube".into())}
+  let known=state.accounts.list().await;
+  for target in &settings.auto_targets{
+   if target.starts_with("youtube:"){
+    if !known.iter().any(|account|&account.id==target&&account.platform=="youtube"){
+     return Err("Войди заново в каждый выбранный YouTube-канал".into())
+    }
+   }else if target.starts_with("up:"){
+    upload_post::target_parts(target)?;
+    if !upload_post::configured().await{return Err("Для дополнительных облачных аккаунтов нужен настроенный Upload-Post".into())}
+   }else{
+    return Err("Для бесплатной автопубликации выбирай YouTube-аккаунты. TikTok через Twitch требует ручного подтверждения".into())
+   }
+  }
  }
  state.database.lock().await.save_settings(&settings)
 }
