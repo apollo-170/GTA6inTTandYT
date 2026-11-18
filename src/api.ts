@@ -9,6 +9,8 @@ export type Highlight = {id:number;channel_id:string;channel_login:string;title:
 export type Settings = {client_id:string;demo_mode:boolean;auto_clip:boolean;auto_export:boolean;threshold:number;cooldown_seconds:number;output_dir:string;banner_path:string;ffmpeg_path:string;vision_endpoint:string;vision_model:string};
 export type Snapshot = { settings:Settings; channels:Channel[]; highlights:Highlight[]; monitoring:boolean; authenticated_as:string|null };
 export type Device = {device_code:string;user_code:string;verification_uri:string;interval:number};
+export type ConnectedAccount={id:string;name:string;platform:'youtube'|'tiktok'};
+export type UpdateStatus={current_version:string;latest_version:string|null;available:boolean;release_url:string;download_url:string|null;message:string};
 const defaults:Settings={client_id:'',demo_mode:true,auto_clip:false,auto_export:false,threshold:68,cooldown_seconds:120,output_dir:'',banner_path:'',ffmpeg_path:'ffmpeg',vision_endpoint:'https://api.openai.com/v1/chat/completions',vision_model:''};
 export const desktop=isTauri();
 const key='clipforge-browser-demo-v1';
@@ -33,6 +35,10 @@ export async function pickDirectory():Promise<string|null>{if(!desktop)throw Err
 export async function attachVideo(id:number,path:string){if(!desktop)throw Error('Только Windows-приложение');return invoke<void>('attach_video',{id,path})}
 export async function renderVideo(id:number):Promise<string>{if(!desktop)throw Error('FFmpeg доступен в Windows-приложении');return invoke('render_highlight',{id})}
 export async function analyzeVideo(id:number,apiKey:string){if(!desktop)throw Error('Vision доступен в Windows-приложении');return invoke<string>('analyze_highlight',{id,apiKey})}
-export async function publishVideo(id:number,platform:string,accessToken:string,title:string,privacy:string,confirmed:boolean){if(!desktop)throw Error('Публикация доступна в Windows-приложении');return invoke<string>('publish_highlight',{id,platform,accessToken,title,privacy,confirmed})}
+export async function connectedAccounts():Promise<ConnectedAccount[]>{if(!desktop)return [];return invoke<ConnectedAccount[]>('connected_accounts')}
+export async function beginYouTube():Promise<string>{if(!desktop)throw Error('OAuth доступен в Windows-приложении');return invoke<string>('youtube_oauth_start')}
+export async function removeAccount(id:string):Promise<void>{if(!desktop)throw Error('Только в Windows-приложении');return invoke('disconnect_social_account',{id})}
+export async function checkUpdates():Promise<UpdateStatus>{if(!desktop)return {current_version:'0.4.0',latest_version:null,available:false,release_url:'https://github.com/apollo-170/GTA6inTTandYT/releases',download_url:null,message:'Проверка обновлений доступна в Windows-приложении'};return invoke<UpdateStatus>('update_check')}
+export async function publishVideo(id:number,accountId:string,title:string,privacy:string,confirmed:boolean){if(!desktop)throw Error('Публикация доступна в Windows-приложении');return invoke<string>('publish_highlight',{id,accountId,title,privacy,confirmed})}
 export async function externalUrl(url:string){if(desktop){await openUrl(url)}else{window.open(url,'_blank','noopener,noreferrer')}}
-export async function watchRefresh(refresh:()=>void,notice:(str:string)=>void){if(!desktop)return ()=>{};const a=await listen('clipforge:refresh',refresh);const b=await listen<string>('clipforge:notice',(e)=>notice(e.payload));return ()=>{a();b()}}
+export async function watchRefresh(refresh:()=>void,notice:(str:string)=>void){if(!desktop)return ()=>{};const a=await listen('clipforge:refresh',refresh);const b=await listen<string>('clipforge:notice',(e)=>notice(e.payload));const c=await listen<string>('clipforge:connected',(e)=>notice(e.payload));return ()=>{a();b();c()}}
