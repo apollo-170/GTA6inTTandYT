@@ -46,6 +46,9 @@ async fn save_settings(state:State<'_,AppState>,settings:Settings)->Result<(),St
     }
    }else if target.starts_with("tt:"){
     if !tiktok_native::accounts().iter().any(|a|&a.id==target){return Err("Переподключи TikTok в ClipForge".into())}
+    if settings.auto_tiktok_mode!="MEDIA_UPLOAD"{
+     return Err("Для фонового режима TikTok разрешена только отправка в черновики. Direct Post требует подтверждения каждого видео.".into())
+    }
    }else if target.starts_with("up:"){
     upload_post::target_parts(target)?;
     if !upload_post::configured().await{return Err("Для дополнительных облачных аккаунтов нужен настроенный Upload-Post".into())}
