@@ -8,7 +8,7 @@ import './redesign.css';
 import './visual-refresh.css';
 const NAV:[Tab,string,React.ElementType][]=[['dashboard','Обзор',LayoutDashboard],['streams','Стримеры',Radio],['highlights','Моменты',Scissors],['studio','Видеостудия',Clapperboard],['publishing','Публикация',CloudUpload],['settings','Настройки',Settings2]];
 const LIBRARY_FILTERS=[['all','Все'],['ready','Готовые'],['pending','В обработке']] as const;
-const initial:Snapshot={settings:{client_id:'',demo_mode:true,auto_clip:false,auto_export:false,threshold:68,cooldown_seconds:120,output_dir:'',banner_path:'',ffmpeg_path:'ffmpeg',vision_endpoint:'https://api.openai.com/v1/chat/completions',vision_model:''},channels:[],highlights:[],monitoring:false,authenticated_as:null};
+const initial:Snapshot={settings:{auto_publish:false,auto_publish_confirmed:false,auto_targets:[],auto_youtube_privacy:'private',auto_tiktok_mode:'MEDIA_UPLOAD',auto_daily_limit:5,client_id:'',demo_mode:true,auto_clip:false,auto_export:false,threshold:68,cooldown_seconds:120,output_dir:'',banner_path:'',ffmpeg_path:'ffmpeg',vision_endpoint:'https://api.openai.com/v1/chat/completions',vision_model:''},channels:[],highlights:[],monitoring:false,authenticated_as:null};
 type Account=api.ConnectedAccount & {selected:boolean};
 function titleStatus(status:string){return ({detected:'Обнаружен',creating:'Twitch обрабатывает',clip_ready:'Клип создан',downloaded:'Файл загружен',source_attached:'Исходник готов',exported:'Готов к публикации',clip_timeout:'Таймаут Twitch',published_youtube:'YouTube загружен',tiktok_draft:'Черновик TikTok'} as Record<string,string>)[status]||status;}
 function timeAgo(ts:string){const seconds=Math.max(0,Math.floor((Date.now()-new Date(ts).getTime())/1000));if(seconds<60)return 'только что';if(seconds<3600)return `${Math.floor(seconds/60)} мин назад`;if(seconds<86400)return `${Math.floor(seconds/3600)} ч назад`;return new Date(ts).toLocaleDateString('ru-RU')}
@@ -40,6 +40,8 @@ function App(){
  const [updatePanelOpen,setUpdatePanelOpen]=useState(false);const [updateInstalling,setUpdateInstalling]=useState(false);
  const [updateProgress,setUpdateProgress]=useState<api.UpdateProgress|null>(null);
  const [publishTitle,setPublishTitle]=useState('');const [privacy,setPrivacy]=useState('private');const [publishAgreed,setPublishAgreed]=useState(false);
+ const [hostedKey,setHostedKey]=useState('');const [hostedProfile,setHostedProfile]=useState('clipforge');const [hostedReady,setHostedReady]=useState(false);
+ const [githubToken,setGithubToken]=useState('');const [githubReady,setGithubReady]=useState(false);
  const [publishResults,setPublishResults]=useState<Record<string,api.PublishResult>>({});
  const inform=useCallback((message:string,kind:'good'|'bad'='good')=>setToast({message,kind}),[]);
  const refresh=useCallback(async()=>{try{const [s,linked]=await Promise.all([api.getSnapshot(),api.connectedAccounts()]);setData(s);setSettings(s.settings);setAccounts(old=>linked.map(item=>({...item,selected:old.find(o=>o.id===item.id)?.selected??false})));}catch(err){inform(String(err),'bad')}},[inform]);
@@ -47,7 +49,11 @@ function App(){
  useEffect(()=>{if(!toast)return;const id=setTimeout(()=>setToast(null),8000);return()=>clearTimeout(id)},[toast]);
  useEffect(()=>{let stop:(()=>void)|undefined;void api.watchUpdateProgress(p=>setUpdateProgress(p)).then(un=>stop=un);return()=>stop?.()},[]);
  useEffect(()=>{let stop:(()=>void)|undefined;void api.watchPublishProgress(p=>setPublishResults(prev=>({...prev,[p.account_id]:p}))).then(un=>stop=un);return()=>stop?.()},[]);
- useEffect(()=>{if(api.desktop)void api.integrationDiagnostics().then(setIntegrations).catch(()=>{});},[]);
+ useEffect(()=>{if(api.desktop){
+  void api.integrationDiagnostics().then(setIntegrations).catch(()=>{});
+  void api.hostedStatus().then(p=>setHostedReady(p.connected)).catch(()=>{});
+  void api.githubUpdateTokenStatus().then(setGithubReady).catch(()=>{});
+ }},[]);
  useEffect(()=>{if(!device)return;let running=true;const t=setInterval(()=>{void api.pollDevice().then(user=>{if(user&&running){setDevice(null);inform(`Twitch подключён: ${user.display_name}`);void refresh()}}).catch(e=>{if(running){setDevice(null);inform(String(e),'bad')}})},Math.max(5,device.interval)*1000);return()=>{running=false;clearInterval(t)}},[device,inform,refresh]);
  const run=useCallback(async(key:string,fn:()=>Promise<unknown>,success?:string)=>{setPending(key);try{await fn();if(success)inform(success);await refresh()}catch(err){inform(err instanceof Error?err.message:String(err),'bad')}finally{setPending('')}},[inform,refresh]);
  const current=data.highlights.find(h=>h.id===selected)||data.highlights[0]||null;
@@ -80,6 +86,12 @@ function App(){
  const connectTwitch=()=>run('device',async()=>{await api.saveSettings(settings);const d=await api.beginDevice();setDevice(d);await api.externalUrl(d.verification_uri)},'Открыта авторизация Twitch; код для подтверждения показан в настройках');
  const connectYouTube=()=>run('youtube',async()=>{const url=await api.beginYouTube();await api.externalUrl(url)},'Открыта авторизация YouTube в браузере');
  const connectTikTok=()=>run('tiktok',async()=>{const url=await api.beginTikTok();await api.externalUrl(url)},'Открыта авторизация TikTok в браузере');
+ const saveHostedKey=()=>run('hosted-key',async()=>{await api.hostedSaveKey(hostedKey);setHostedKey('');setHostedReady(true)},'Upload-Post подключён; ключ хранится в Windows Credential Manager');
+ const forgetHostedKey=()=>run('hosted-forget',async()=>{await api.hostedForgetKey();setHostedReady(false)},'Ключ Upload-Post удалён из Windows');
+ const connectHosted=()=>run('hosted-connect',async()=>{const url=await api.hostedConnect(hostedProfile.trim());await api.externalUrl(url)},'Открыта официальная страница подключения YouTube / TikTok в Upload-Post');
+ const saveGithubToken=()=>run('github-token',async()=>{await api.githubUpdateTokenSave(githubToken);setGithubToken('');setGithubReady(true);const status=await api.checkUpdates();setUpdateStatus(status)},'GitHub OTA настроен: токен хранится в Windows Credential Manager');
+ const forgetGithubToken=()=>run('github-forget',async()=>{await api.githubUpdateTokenForget();setGithubReady(false)},'Доступ GitHub OTA отключён');
+ const autoToggleTarget=(id:string,checked:boolean)=>setSettings(p=>({...p,auto_targets:checked?[...new Set([...p.auto_targets,id])]:p.auto_targets.filter(x=>x!==id)}));
  const checkForUpdates=async()=>{setCheckingUpdate(true);try{const status=await api.checkUpdates();setUpdateStatus(status);if(status.available)setUpdatePanelOpen(true);else inform(status.message)}catch(e){inform(String(e),'bad')}finally{setCheckingUpdate(false)}};
  const openUpdates=()=>{setUpdatePanelOpen(true);void checkForUpdates()};
  const installLatestUpdate=async()=>{if(!updateStatus?.can_install){void api.externalUrl(updateStatus?.release_url||'https://github.com/apollo-170/GTA6inTTandYT/releases');return}setUpdateInstalling(true);setUpdateProgress({stage:'Подготовка скачивания',percent:0});try{await api.installUpdate();inform('Установщик запускается. Подтверди обновление Windows.')}catch(e){setUpdateInstalling(false);inform(String(e),'bad')}};
