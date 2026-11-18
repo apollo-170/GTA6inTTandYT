@@ -14,6 +14,7 @@ struct AppState {
  database:Mutex<db::Database>,auth:Mutex<Auth>,detector:Mutex<Detector>,
  counts:Mutex<HashMap<String,u64>>,monitor:Arc<AtomicBool>,worker:Mutex<Option<tokio::task::JoinHandle<()>>>,
  accounts:social::Accounts,
+ publishing:AtomicBool,
 }
 fn twitch_id(settings:&Settings)->String{option_env!("CLIPFORGE_TWITCH_CLIENT_ID").filter(|s|!s.trim().is_empty()).unwrap_or(&settings.client_id).to_owned()}
 fn notify(app:&AppHandle){let _=app.emit("clipforge:refresh",());}
@@ -293,6 +294,78 @@ async fn integration_diagnostics(state:State<'_,AppState>)->Result<IntegrationDi
  })
 }
 
+
+#[derive(Clone,serde::Serialize)]
+struct PublishOutcome {
+ account_id:String,
+ account_name:String,
+ platform:String,
+ state:String,
+ detail:String,
+}
+struct PublishingGuard<'a>(&'a AtomicBool);
+impl Drop for PublishingGuard<'_>{
+ fn drop(&mut self){self.0.store(false,Ordering::Release);}
+}
+#[tauri::command]
+async fn publish_batch(app:AppHandle,id:i64,account_ids:Vec<String>,title:String,privacy:String,confirmed:bool)->Result<Vec<PublishOutcome>,String>{
+ if !confirmed{return Err("Перед публикацией подтверди права на ролик".into())}
+ if title.trim().is_empty(){return Err("Введи название ролика".into())}
+ if account_ids.is_empty()||account_ids.len()>20{return Err("Выбери от 1 до 20 аккаунтов".into())}
+ let unique:std::collections::HashSet<&String>=account_ids.iter().collect();
+ if unique.len()!=account_ids.len(){return Err("Один аккаунт нельзя указать дважды".into())}
+ let st=app.state::<AppState>();
+ if st.publishing.compare_exchange(false,true,Ordering::Acquire,Ordering::Relaxed).is_err(){
+  return Err("Публикация уже выполняется".into())
+ }
+ let _guard=PublishingGuard(&st.publishing);
+ let h=st.database.lock().await.highlight(id)?;
+ let path=h.output_path.as_deref().ok_or("Сначала экспортируй вертикальный MP4")?.to_owned();
+ let file=tokio::fs::metadata(&path).await.map_err(|e|format!("Видео не найдено: {e}"))?;
+ if !file.is_file()||file.len()==0{return Err("Экспортированный файл пуст или недоступен".into())}
+ let available=st.accounts.list().await;
+ let mut results=Vec::with_capacity(account_ids.len());
+ let mut youtube_uploaded=false;
+ let mut tiktok_sent=false;
+ for account_id in &account_ids {
+  let info=available.iter().find(|a|&a.id==account_id);
+  let name=info.map(|a|a.name.clone()).unwrap_or_else(||"Отключённый аккаунт".into());
+  let platform=info.map(|a|a.platform.clone()).unwrap_or_else(||"unknown".into());
+  let progress=PublishOutcome{account_id:account_id.clone(),account_name:name.clone(),platform:platform.clone(),state:"uploading".into(),detail:"Загружаем видео".into()};
+  let _=app.emit("clipforge:publish-progress",progress);
+  let response=async {
+   let (kind,token)=social::token_for(&st.accounts,account_id).await?;
+   match kind.as_str() {
+    "youtube"=>publisher::youtube_upload(&path,&token,&title,&privacy).await,
+    "tiktok"=>publisher::tiktok_draft(&path,&token).await,
+    _=>Err("Неподдерживаемая платформа".into()),
+   }
+  }.await;
+  let result=match response{
+   Ok(link)=>{
+    if platform=="youtube"{youtube_uploaded=true}
+    if platform=="tiktok"{tiktok_sent=true}
+    PublishOutcome{account_id:account_id.clone(),account_name:name,platform,
+      state:if info.is_some_and(|a|a.platform=="tiktok"){"draft"}else{"success"}.into(),
+      detail:if info.is_some_and(|a|a.platform=="tiktok"){
+       format!("Отправлено в черновики TikTok (ID: {link}); заверши публикацию в TikTok")
+      }else{format!("Опубликовано: {link}")}}
+   }
+   Err(message)=>PublishOutcome{account_id:account_id.clone(),account_name:name,platform,
+     state:"error".into(),detail:message.chars().take(400).collect()},
+  };
+  let _=app.emit("clipforge:publish-progress",result.clone());
+  results.push(result);
+ }
+ if youtube_uploaded||tiktok_sent{
+  let mut record=h;
+  record.status=if youtube_uploaded{"published_youtube"}else{"tiktok_draft"}.into();
+  st.database.lock().await.save_highlight(&record)?;
+  notify(&app);
+ }
+ Ok(results)
+}
+
 #[tauri::command]
 async fn publish_highlight(app:AppHandle,id:i64,account_id:String,title:String,privacy:String,confirmed:bool)->Result<String,String>{
  if !confirmed{return Err("Публикация требует подтверждения пользователя".into())}
@@ -311,7 +384,7 @@ async fn publish_highlight(app:AppHandle,id:i64,account_id:String,title:String,p
 pub fn run(){
  let database=db::Database::open().expect("Cannot open ClipForge SQLite database");
  tauri::Builder::default().plugin(tauri_plugin_dialog::init()).plugin(tauri_plugin_opener::init())
- .manage(AppState{database:Mutex::new(database),auth:Mutex::new(Auth{token:String::new(),user:None,device:None}),detector:Mutex::new(Detector::default()),counts:Mutex::new(HashMap::new()),monitor:Arc::new(AtomicBool::new(false)),worker:Mutex::new(None),accounts:social::Accounts::new()})
- .invoke_handler(tauri::generate_handler![snapshot,save_settings,add_channel,remove_channel,update_channel,twitch_device_start,twitch_device_poll,disconnect_twitch,start_monitor,stop_monitor,demo_burst,create_twitch_clip,attach_video,render_highlight,analyze_highlight,publish_highlight,connected_accounts,youtube_oauth_start,disconnect_social_account,update_check,update_install,integration_diagnostics])
+ .manage(AppState{database:Mutex::new(database),auth:Mutex::new(Auth{token:String::new(),user:None,device:None}),detector:Mutex::new(Detector::default()),counts:Mutex::new(HashMap::new()),monitor:Arc::new(AtomicBool::new(false)),worker:Mutex::new(None),accounts:social::Accounts::new(),publishing:AtomicBool::new(false)})
+ .invoke_handler(tauri::generate_handler![snapshot,save_settings,add_channel,remove_channel,update_channel,twitch_device_start,twitch_device_poll,disconnect_twitch,start_monitor,stop_monitor,demo_burst,create_twitch_clip,attach_video,render_highlight,analyze_highlight,publish_highlight,publish_batch,connected_accounts,youtube_oauth_start,disconnect_social_account,update_check,update_install,integration_diagnostics])
  .run(tauri::generate_context!()).expect("Tauri startup failed");
 }
