@@ -10,6 +10,7 @@ export type Settings = {client_id:string;demo_mode:boolean;auto_clip:boolean;aut
 export type Snapshot = { settings:Settings; channels:Channel[]; highlights:Highlight[]; monitoring:boolean; authenticated_as:string|null };
 export type Device = {device_code:string;user_code:string;verification_uri:string;interval:number};
 export type ConnectedAccount={id:string;name:string;platform:'youtube'|'tiktok'};
+export type PublishResult={account_id:string;account_name:string;platform:'youtube'|'tiktok'|string;state:'uploading'|'success'|'draft'|'error';detail:string};
 export type UpdateStatus={current_version:string;latest_version:string|null;available:boolean;can_install:boolean;release_url:string;download_url:string|null;message:string};
 export type UpdateProgress={stage:string;percent:number};
 export type IntegrationDiagnostics={twitch_configured:boolean;twitch_connected:boolean;youtube_configured:boolean;youtube_accounts:number;tiktok_configured:boolean;ffmpeg_ready:boolean;update_feed_public:boolean};
@@ -38,6 +39,12 @@ export async function attachVideo(id:number,path:string){if(!desktop)throw Error
 export async function renderVideo(id:number):Promise<string>{if(!desktop)throw Error('FFmpeg доступен в Windows-приложении');return invoke('render_highlight',{id})}
 export async function analyzeVideo(id:number,apiKey:string){if(!desktop)throw Error('Vision доступен в Windows-приложении');return invoke<string>('analyze_highlight',{id,apiKey})}
 export async function connectedAccounts():Promise<ConnectedAccount[]>{if(!desktop)return [];return invoke<ConnectedAccount[]>('connected_accounts')}
+export async function beginTikTok():Promise<string>{if(!desktop)throw Error('TikTok OAuth доступен в Windows-приложении');return invoke<string>('tiktok_oauth_start')}
+export async function watchPublishProgress(callback:(result:PublishResult)=>void){if(!desktop)return ()=>{};return listen<PublishResult>('clipforge:publish-progress',e=>callback(e.payload))}
+export async function publishBatch(id:number,accountIds:string[],title:string,privacy:string,confirmed:boolean):Promise<PublishResult[]>{
+ if(!desktop)throw Error('Публикация доступна в Windows-приложении');
+ return invoke<PublishResult[]>('publish_batch',{id,accountIds,title,privacy,confirmed});
+}
 export async function beginYouTube():Promise<string>{if(!desktop)throw Error('OAuth доступен в Windows-приложении');return invoke<string>('youtube_oauth_start')}
 export async function removeAccount(id:string):Promise<void>{if(!desktop)throw Error('Только в Windows-приложении');return invoke('disconnect_social_account',{id})}
 export async function integrationDiagnostics():Promise<IntegrationDiagnostics>{
