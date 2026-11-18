@@ -243,3 +243,12 @@ input:focus,select:focus{border-color:#9b80ec!important;box-shadow:0 0 0 3px #9c
 .integration-state.good{background:#203a31;color:#99e7c8}
 .integration-state.pending{background:#423228;color:#f4c594}
 @media(max-width:1050px){.integration-row{flex-wrap:wrap}.integration-state{margin-left:20px}}
+
+/* ClipForge 0.4.3: native Twitch clip sharing */
+.twitch-share-panel{grid-column:1 / -1;background:linear-gradient(110deg,#252039,#191b26);border-color:#54446f;display:flex;flex-direction:column;gap:12px}
+.twitch-share-panel .connect-list{margin:4px 0;align-items:center}
+.twitch-native-flow{display:flex;align-items:flex-start;gap:12px;max-width:850px;color:#bcb1d1;font-size:12px;line-height:1.65}
+.twitch-native-number{flex-shrink:0;width:26px;height:26px;display:grid;place-items:center;border:1px solid #795eac;background:#483363;border-radius:9px;color:#f1e4ff;font-size:12px;font-weight:800}
+.twitch-share-panel .helper{max-width:900px}
+.twitch-share-panel .btn{min-width:198px}
+@media(max-width:800px){.twitch-share-panel{padding:18px}.twitch-share-panel .btn{width:100%}}

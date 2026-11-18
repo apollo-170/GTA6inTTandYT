@@ -32,3 +32,10 @@
 - Нормализован Google OAuth Client ID с окончанием `.apps.googleusercontent.com`
 - Проверка формата идентификаторов в GitHub Actions
 - Исправлен цвет уведомления об успешном подключении YouTube
+
+## v0.4.3
+- Shortcut to share an existing Twitch Clip directly using Twitch's own official YouTube Shorts / TikTok sharing UI
+- Quick link to Twitch account connections
+- Allow creating a Twitch Clip directly from the Publishing tab when one is not ready
+- Periodic update checks (startup, every 30 minutes, window focus) and deduplicated in-app notices when the update API is reachable
+- Clarifies private repository update limitations without silently installing unsigned executables
