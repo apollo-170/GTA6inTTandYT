@@ -1,4 +1,4 @@
-mod models;mod db;mod scoring;mod twitch;mod export;mod publisher;mod vision;mod ffmpeg;mod social;mod updates;
+mod models;mod db;mod scoring;mod twitch;mod export;mod publisher;mod vision;mod ffmpeg;mod social;mod updates;mod upload_post;
 use chrono::Utc;
 use futures_util::StreamExt;
 use models::{Channel,Highlight,Settings,Snapshot,TwitchDevice,LoggedIn};
@@ -32,6 +32,14 @@ async fn snapshot(state:State<'_,AppState>)->Result<Snapshot,String>{
 #[tauri::command]
 async fn save_settings(state:State<'_,AppState>,settings:Settings)->Result<(),String>{
  if settings.threshold>100||settings.cooldown_seconds<15||settings.cooldown_seconds>3600{return Err("Некорректные настройки детектора".into())}
+ if settings.auto_daily_limit==0||settings.auto_daily_limit>20{return Err("Дневной лимит: от 1 до 20 клипов".into())}
+ if !["private","unlisted","public"].contains(&settings.auto_youtube_privacy.as_str())||!["MEDIA_UPLOAD","DIRECT_POST"].contains(&settings.auto_tiktok_mode.as_str()){return Err("Некорректный режим публикации".into())}
+ if settings.auto_publish{
+  if settings.demo_mode||!settings.auto_clip||!settings.auto_export||!settings.auto_publish_confirmed{return Err("Включи реальный Twitch, авто-клип, экспорт и подтверди права".into())}
+  if settings.auto_targets.is_empty()||settings.auto_targets.len()>20{return Err("Для автопубликации выбери 1–20 профилей Upload-Post".into())}
+  for target in &settings.auto_targets{upload_post::target_parts(target)?;}
+  if !upload_post::configured().await{return Err("Сначала подключи API-ключ Upload-Post в Windows Credential Manager".into())}
+ }
  state.database.lock().await.save_settings(&settings)
 }
 #[tauri::command]
@@ -257,7 +265,23 @@ async fn analyze_highlight(app:AppHandle,id:i64,api_key:String)->Result<String,S
 }
 
 #[tauri::command]
-async fn connected_accounts(state:State<'_,AppState>)->Result<Vec<social::AccountView>,String>{Ok(state.accounts.list().await)}
+async fn connected_accounts(state:State<'_,AppState>)->Result<Vec<social::AccountView>,String>{
+ let mut all=state.accounts.list().await;
+ if upload_post::configured().await{if let Ok(hosted)=upload_post::accounts().await{all.extend(hosted)}}
+ Ok(all)
+}
+#[tauri::command]
+async fn upload_post_status()->Result<upload_post::HostedState,String>{
+ Ok(upload_post::HostedState{connected:upload_post::configured().await,provider:"Upload-Post".into(),error:None})
+}
+#[tauri::command]
+async fn upload_post_save_key(api_key:String)->Result<(),String>{upload_post::save_key(api_key).await}
+#[tauri::command]
+async fn upload_post_forget_key()->Result<(),String>{upload_post::clear_key().await}
+#[tauri::command]
+async fn upload_post_connect(profile:String)->Result<String,String>{upload_post::connect_link(&profile).await}
+#[tauri::command]
+async fn upload_post_accounts()->Result<Vec<social::AccountView>,String>{upload_post::accounts().await}
 #[tauri::command]
 async fn youtube_oauth_start(app:AppHandle)->Result<String,String>{social::begin_youtube(app).await}
 #[tauri::command]
@@ -265,6 +289,7 @@ async fn tiktok_oauth_start(app:AppHandle)->Result<String,String>{social::begin_
 #[tauri::command]
 async fn disconnect_social_account(app:AppHandle,id:String)->Result<(),String>{
  let st=app.state::<AppState>();
+ if id.starts_with("up:"){return Err("Отключай соцсети через панель Upload-Post".into())}
  if !social::disconnect_account(&st.accounts,&id).await?{return Err("Аккаунт не найден".into())}
  notify(&app);Ok(())
 }
@@ -325,7 +350,9 @@ async fn publish_batch(app:AppHandle,id:i64,account_ids:Vec<String>,title:String
  let path=h.output_path.as_deref().ok_or("Сначала экспортируй вертикальный MP4")?.to_owned();
  let file=tokio::fs::metadata(&path).await.map_err(|e|format!("Видео не найдено: {e}"))?;
  if !file.is_file()||file.len()==0{return Err("Экспортированный файл пуст или недоступен".into())}
- let available=st.accounts.list().await;
+ let mut available=st.accounts.list().await;
+ if let Ok(hosted)=upload_post::accounts().await{available.extend(hosted)}
+ let settings=st.database.lock().await.settings()?;
  let mut results=Vec::with_capacity(account_ids.len());
  let mut youtube_uploaded=false;
  let mut tiktok_sent=false;
@@ -335,23 +362,24 @@ async fn publish_batch(app:AppHandle,id:i64,account_ids:Vec<String>,title:String
   let platform=info.map(|a|a.platform.clone()).unwrap_or_else(||"unknown".into());
   let progress=PublishOutcome{account_id:account_id.clone(),account_name:name.clone(),platform:platform.clone(),state:"uploading".into(),detail:"Загружаем видео".into()};
   let _=app.emit("clipforge:publish-progress",progress);
-  let response=async {
-   let (kind,token)=social::token_for(&st.accounts,account_id).await?;
-   match kind.as_str() {
-    "youtube"=>publisher::youtube_upload(&path,&token,&title,&privacy).await,
-    "tiktok"=>publisher::tiktok_draft(&path,&token).await,
-    _=>Err("Неподдерживаемая платформа".into()),
+  let response:Result<(String,String),String>=async {
+   if account_id.starts_with("up:"){
+    let posted=upload_post::send_video(&path,account_id,&title,&privacy,&settings.auto_tiktok_mode).await?;
+    return Ok((posted.state,posted.detail))
    }
+   let (kind,token)=social::token_for(&st.accounts,account_id).await?;
+   let link=match kind.as_str(){
+    "youtube"=>publisher::youtube_upload(&path,&token,&title,&privacy).await?,
+    "tiktok"=>publisher::tiktok_draft(&path,&token).await?,
+    _=>return Err("Неподдерживаемая платформа".into()),
+   };
+   Ok((if kind=="tiktok"{"draft"}else{"success"}.into(),format!("Отправка: {link}")))
   }.await;
   let result=match response{
-   Ok(link)=>{
+   Ok((state,detail))=>{
     if platform=="youtube"{youtube_uploaded=true}
     if platform=="tiktok"{tiktok_sent=true}
-    PublishOutcome{account_id:account_id.clone(),account_name:name,platform,
-      state:if info.is_some_and(|a|a.platform=="tiktok"){"draft"}else{"success"}.into(),
-      detail:if info.is_some_and(|a|a.platform=="tiktok"){
-       format!("Отправлено в черновики TikTok (ID: {link}); заверши публикацию в TikTok")
-      }else{format!("Опубликовано: {link}")}}
+    PublishOutcome{account_id:account_id.clone(),account_name:name,platform,state,detail}
    }
    Err(message)=>PublishOutcome{account_id:account_id.clone(),account_name:name,platform,
      state:"error".into(),detail:message.chars().take(400).collect()},
@@ -387,6 +415,6 @@ pub fn run(){
  let database=db::Database::open().expect("Cannot open ClipForge SQLite database");
  tauri::Builder::default().plugin(tauri_plugin_dialog::init()).plugin(tauri_plugin_opener::init())
  .manage(AppState{database:Mutex::new(database),auth:Mutex::new(Auth{token:String::new(),user:None,device:None}),detector:Mutex::new(Detector::default()),counts:Mutex::new(HashMap::new()),monitor:Arc::new(AtomicBool::new(false)),worker:Mutex::new(None),accounts:social::Accounts::new(),publishing:AtomicBool::new(false)})
- .invoke_handler(tauri::generate_handler![snapshot,save_settings,add_channel,remove_channel,update_channel,twitch_device_start,twitch_device_poll,disconnect_twitch,start_monitor,stop_monitor,demo_burst,create_twitch_clip,attach_video,render_highlight,analyze_highlight,publish_highlight,publish_batch,connected_accounts,youtube_oauth_start,tiktok_oauth_start,disconnect_social_account,update_check,update_install,integration_diagnostics])
+ .invoke_handler(tauri::generate_handler![snapshot,save_settings,add_channel,remove_channel,update_channel,twitch_device_start,twitch_device_poll,disconnect_twitch,start_monitor,stop_monitor,demo_burst,create_twitch_clip,attach_video,render_highlight,analyze_highlight,publish_highlight,publish_batch,connected_accounts,upload_post_status,upload_post_save_key,upload_post_forget_key,upload_post_connect,upload_post_accounts,youtube_oauth_start,tiktok_oauth_start,disconnect_social_account,update_check,update_install,integration_diagnostics])
  .run(tauri::generate_context!()).expect("Tauri startup failed");
 }
