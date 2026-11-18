@@ -72,3 +72,9 @@ export async function checkUpdates():Promise<UpdateStatus>{if(!desktop)return {c
 export async function publishVideo(id:number,accountId:string,title:string,privacy:string,confirmed:boolean){if(!desktop)throw Error('Публикация доступна в Windows-приложении');return invoke<string>('publish_highlight',{id,accountId,title,privacy,confirmed})}
 export async function externalUrl(url:string){if(desktop){await openUrl(url)}else{window.open(url,'_blank','noopener,noreferrer')}}
 export async function watchRefresh(refresh:()=>void,notice:(str:string)=>void,connected?:(str:string)=>void){if(!desktop)return ()=>{};const a=await listen('clipforge:refresh',refresh);const b=await listen<string>('clipforge:notice',(e)=>notice(e.payload));const c=await listen<string>('clipforge:connected',(e)=>(connected||notice)(e.payload));return ()=>{a();b();c()}}
+
+export type VodInfo={path:string;duration:number;size:number;name:string};
+export async function vodInfo(path:string):Promise<VodInfo>{if(!desktop)throw Error('VOD доступен в Windows-приложении');return invoke<VodInfo>('vod_info',{path})}
+export async function vodFrame(path:string,at:number):Promise<string>{if(!desktop)throw Error('Предпросмотр доступен в Windows-приложении');return invoke<string>('vod_frame',{path,at})}
+export async function vodCut(path:string,start:number,end:number,vertical:boolean):Promise<string>{if(!desktop)throw Error('Монтаж доступен в Windows-приложении');return invoke<string>('vod_cut',{path,start,end,vertical})}
+export async function vodYouTubeUpload(path:string,accountIds:string[],title:string,privacy:string,confirmed:boolean):Promise<string[]>{if(!desktop)throw Error('Загрузка доступна в Windows-приложении');return invoke<string[]>('vod_youtube_upload',{path,accountIds,title,privacy,confirmed})}
