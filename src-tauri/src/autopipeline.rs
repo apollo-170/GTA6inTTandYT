@@ -44,6 +44,9 @@ pub async fn process(app:AppHandle,id:i64)->Result<(),String>{
  for target in &config.auto_targets{
   let (label,platform)=if target.starts_with("youtube:"){
    (linked.iter().find(|a|a.id.as_str()==target.as_str()).map(|a|a.name.clone()).unwrap_or_else(||"YouTube".into()),"youtube".to_string())
+  }else if target.starts_with("tt:"){
+   (crate::tiktok_native::accounts().iter().find(|a|a.id.as_str()==target.as_str())
+     .map(|a|a.name.clone()).unwrap_or_else(||"TikTok".into()),"tiktok".to_string())
   }else{
    let (profile,platform)=crate::upload_post::target_parts(target)?;
    (profile.to_string(),platform.to_string())
@@ -58,6 +61,9 @@ pub async fn process(app:AppHandle,id:i64)->Result<(),String>{
     if platform!="youtube"{return Err("Неверный тип аккаунта".into())}
     let link=crate::publisher::youtube_upload(&path,&access_token,&clip.title,&config.auto_youtube_privacy).await?;
     Ok(("success".into(),format!("YouTube: {link}")))
+   }else if target.starts_with("tt:"){
+    let result=crate::tiktok_native::publish(&path,target,&clip.title,&config.auto_tiktok_privacy).await?;
+    Ok((result.state,result.detail))
    }else{
     let result=crate::upload_post::send_video(&path,target,&clip.title,
      &config.auto_youtube_privacy,&config.auto_tiktok_mode).await?;
