@@ -236,10 +236,9 @@ async fn create_for_id(app:&AppHandle,id:i64)->Result<(),String>{
         }
        }
       }
-      if let Err(error)=downloading{
+     }else if let Err(error)=downloading{
        h.status="download_error".into();state.database.lock().await.save_highlight(&h)?;notify(app);
        alert(app,&format!("Twitch не разрешил скачать клип: {error}. Проверь права владельца/редактора и Twitch OAuth scopes."));
-      }
      }
     }
     return Ok(())
