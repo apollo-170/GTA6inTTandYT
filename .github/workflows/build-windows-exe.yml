@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       publish_release:
-        description: 'Пересобрать Windows EXE и обновить релиз v0.5.0'
+        description: 'Пересобрать Windows EXE и обновить релиз v0.6.0'
         required: false
         default: false
         type: boolean
@@ -20,6 +20,7 @@ permissions:
 env:
   CLIPFORGE_TWITCH_CLIENT_ID: ${{ vars.CLIPFORGE_TWITCH_CLIENT_ID || 'uke7rmobt4elpl5va4in7wskxzrl86' }}
   CLIPFORGE_YOUTUBE_CLIENT_ID: ${{ vars.CLIPFORGE_YOUTUBE_CLIENT_ID || '626827430390-hs0in9d6urln2ub5hvvmk3g59chn4cdi.apps.googleusercontent.com' }}
+  CLIPFORGE_TIKTOK_BRIDGE_URL: ${{ vars.CLIPFORGE_TIKTOK_BRIDGE_URL }}
 
 jobs:
   build-windows:
@@ -67,6 +68,9 @@ jobs:
       - name: Install frontend dependencies
         run: npm install --no-audit --no-fund
 
+      - name: Validate optional TikTok OAuth bridge source
+        run: node --check tiktok-bridge/server.mjs
+
       - name: Check frontend TypeScript compilation
         run: npm run build
 
@@ -109,13 +113,13 @@ jobs:
           path: ClipForge-Windows-portable.zip
           if-no-files-found: error
 
-      - name: Publish ClipForge v0.5.0 release
-        if: "github.ref == 'refs/heads/main' && (startsWith(github.event.head_commit.message, 'release: ClipForge v0.5.0') || (github.event_name == 'workflow_dispatch' && inputs.publish_release))"
+      - name: Publish ClipForge v0.6.0 release
+        if: "github.ref == 'refs/heads/main' && (startsWith(github.event.head_commit.message, 'release: ClipForge v0.6.0') || (github.event_name == 'workflow_dispatch' && inputs.publish_release))"
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v0.5.0
+          tag_name: v0.6.0
           target_commitish: main
-          name: ClipForge v0.5.0 — Windows
+          name: ClipForge v0.6.0 — Windows
           draft: false
           prerelease: true
           overwrite_files: true
@@ -125,9 +129,9 @@ jobs:
             ClipForge-Windows-portable.zip
             ClipForge-Windows-Installer-SHA256.txt
           body: |
-            ## ClipForge v0.5.0 — Windows Preview
-            Refined dark studio design and in-app update center with progress and SHA-256 verification. Automatic version checks run at startup, every 30 minutes, and on focus. When public GitHub releases are reachable, ClipForge can download and launch a verified Windows installer with one click. GitHub release assets and hashes are preserved.
+            ## ClipForge v0.6.0 — Windows Preview
+            Multi-account distribution: connect several YouTube channels and authorized TikTok profiles, choose any combination (up to 20 accounts), publish one export per selected profile and inspect independent success/failure statuses. TikTok uploads use creator inbox drafts after the owner deploys an approved, HTTPS OAuth bridge. Direct public TikTok posts are not implemented without video.publish approval. Includes the v0.5 visual redesign and update center.
 
             **Windows x64:** Download the `.exe` installer from Assets and run it. A portable build is also attached as a ZIP.
 
-            **Important:** Preview release. Twitch authentication and access rights are required for live events and authorized clips. Continuous live vision/audio detection and fully unattended TikTok posting are not implemented. YouTube sign-in requires the application owner's Google OAuth Client ID; TikTok requires an approved server-side integration. The software is not production-ready. Use only footage you are allowed to reuse.
+            **Important:** Preview release. Twitch authentication and access rights are required for live events and authorized clips. Continuous live vision/audio detection and TikTok Direct Post are not implemented. Multi-TikTok draft upload requires a separately deployed HTTPS OAuth bridge and provider permissions. YouTube sign-in requires the application owner's Google OAuth Client ID; TikTok requires an approved server-side integration. The software is not production-ready. Use only footage you are allowed to reuse.
