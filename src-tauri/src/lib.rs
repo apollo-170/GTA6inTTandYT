@@ -377,7 +377,8 @@ impl Drop for PublishingGuard<'_>{
  fn drop(&mut self){self.0.store(false,Ordering::Release);}
 }
 #[tauri::command]
-async fn publish_batch(app:AppHandle,id:i64,account_ids:Vec<String>,title:String,privacy:String,confirmed:bool)->Result<Vec<PublishOutcome>,String>{
+async fn publish_batch(app:AppHandle,id:i64,account_ids:Vec<String>,title:String,privacy:String,tiktok_privacy:String,confirmed:bool)->Result<Vec<PublishOutcome>,String>{
+ if !["SELF_ONLY","FOLLOWER_OF_CREATOR","MUTUAL_FOLLOW_FRIENDS","PUBLIC_TO_EVERYONE"].contains(&tiktok_privacy.as_str()){return Err("Неверная видимость TikTok".into())}
  if !confirmed{return Err("Перед публикацией подтверди права на ролик".into())}
  if title.trim().is_empty(){return Err("Введи название ролика".into())}
  if account_ids.is_empty()||account_ids.len()>20{return Err("Выбери от 1 до 20 аккаунтов".into())}
@@ -407,7 +408,7 @@ async fn publish_batch(app:AppHandle,id:i64,account_ids:Vec<String>,title:String
   let _=app.emit("clipforge:publish-progress",progress);
   let response:Result<(String,String),String>=async {
    if account_id.starts_with("tt:"){
-    let posted=tiktok_native::publish(&path,account_id,&title,&settings.auto_tiktok_privacy).await?;
+    let posted=tiktok_native::publish(&path,account_id,&title,&tiktok_privacy).await?;
     return Ok((posted.state,posted.detail))
    }
    if account_id.starts_with("up:"){
