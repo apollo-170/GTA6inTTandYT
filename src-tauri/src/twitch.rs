@@ -13,7 +13,7 @@ async fn parsed(res:reqwest::Response)->Result<Value,String>{
 }
 
 pub async fn device_start(client_id:&str)->Result<TwitchDevice,String>{
- if client_id.trim().len()<6{return Err("Укажи Twitch Client ID в настройках".into())}
+ if client_id.trim().len()<6{return Err("Twitch OAuth ещё не настроен разработчиком. В сборке должен быть CLIPFORGE_TWITCH_CLIENT_ID.".into())}
  let v=parsed(http().post("https://id.twitch.tv/oauth2/device").form(&[
   ("client_id",client_id),
   ("scopes","user:read:chat clips:edit editor:manage:clips channel:manage:clips")
