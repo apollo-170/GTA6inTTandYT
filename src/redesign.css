@@ -228,3 +228,18 @@ input:focus,select:focus{border-color:#9b80ec!important;box-shadow:0 0 0 3px #9c
 .account-list{margin-top:18px}
 .account-list .account{margin-bottom:9px}
 @media(max-width:790px){.connect-list{flex-direction:column;align-items:stretch}.connect-list .btn{width:100%}.update-banner{flex-direction:column;align-items:stretch}}
+
+/* Integration diagnostics */
+.integration-rows{display:flex;flex-direction:column;margin:15px 0 8px;border:1px solid #363647;border-radius:12px;overflow:hidden}
+.integration-row{display:flex;align-items:center;gap:11px;padding:12px 13px;background:#1c1d29;border-bottom:1px solid #303242}
+.integration-row:last-child{border-bottom:0}
+.integration-row>div{min-width:0;flex:1;display:flex;flex-direction:column;gap:4px}
+.integration-row strong{font-size:12px;color:#efedf9}
+.integration-row small{font-size:10px;color:#a1a1b4;line-height:1.4}
+.integration-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+.integration-dot.good{background:#79dbb2;box-shadow:0 0 0 3px #79dbb222}
+.integration-dot.pending{background:#e8b36d;box-shadow:0 0 0 3px #e8b36d20}
+.integration-state{font-size:10px;white-space:nowrap;font-weight:700;padding:6px 8px;border-radius:7px}
+.integration-state.good{background:#203a31;color:#99e7c8}
+.integration-state.pending{background:#423228;color:#f4c594}
+@media(max-width:1050px){.integration-row{flex-wrap:wrap}.integration-state{margin-left:20px}}
