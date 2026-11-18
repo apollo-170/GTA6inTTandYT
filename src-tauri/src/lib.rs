@@ -1,4 +1,4 @@
-mod models;mod db;mod scoring;mod twitch;mod export;mod publisher;mod vision;mod ffmpeg;mod social;mod updates;mod upload_post;
+mod models;mod db;mod scoring;mod twitch;mod export;mod publisher;mod vision;mod ffmpeg;mod social;mod updates;mod upload_post;mod autopipeline;
 use chrono::Utc;
 use futures_util::StreamExt;
 use models::{Channel,Highlight,Settings,Snapshot,TwitchDevice,LoggedIn};
@@ -219,13 +219,26 @@ async fn create_for_id(app:&AppHandle,id:i64)->Result<(),String>{
     // Download is possible only if this user is broadcaster/editor with the required scopes.
     if let Some(user)=user{
      let dest=dirs::video_dir().unwrap_or_else(std::env::temp_dir).join("ClipForge").join(format!("twitch_{}.mp4",clip_id));
-     if twitch::download_clip(&twitch_id(&settings),&token,&h.channel_id,&user.user_id,&clip_id,&dest).await.is_ok(){
+     let downloading=twitch::download_clip(&twitch_id(&settings),&token,&h.channel_id,&user.user_id,&clip_id,&dest).await;
+      if downloading.is_ok(){
       h.source_path=Some(dest.to_string_lossy().to_string());h.status="downloaded".into();state.database.lock().await.save_highlight(&h)?;notify(app);
       if settings.auto_export{
        let input=h.source_path.clone().unwrap_or_default();let ss=settings.clone();let name=format!("{}_{}",h.channel_login,h.id);
        if let Ok(Ok(path))=tokio::task::spawn_blocking(move||export::render(&input,&ss,&name)).await{
         h.output_path=Some(path);h.status="exported".into();state.database.lock().await.save_highlight(&h)?;notify(app);
+        if settings.auto_publish{
+         let ap=app.clone();let highlight_id=h.id;
+         tokio::spawn(async move{
+          if let Err(e)=autopipeline::process(ap.clone(),highlight_id).await{
+           alert(&ap,&format!("Автопубликация: {e}"));
+          }
+         });
+        }
        }
+      }
+      if let Err(error)=downloading{
+       h.status="download_error".into();state.database.lock().await.save_highlight(&h)?;notify(app);
+       alert(app,&format!("Twitch не разрешил скачать клип: {error}. Проверь права владельца/редактора и Twitch OAuth scopes."));
       }
      }
     }
