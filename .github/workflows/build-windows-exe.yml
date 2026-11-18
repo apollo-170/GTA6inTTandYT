@@ -2,6 +2,12 @@ name: ClipForge Windows EXE
 
 on:
   workflow_dispatch:
+    inputs:
+      publish_release:
+        description: 'Обновить Windows EXE в релизе v0.4.1 после настройки OAuth Client IDs'
+        required: false
+        default: false
+        type: boolean
   push:
     branches:
       - main
@@ -44,6 +50,13 @@ jobs:
           if (-not $env:CLIPFORGE_YOUTUBE_CLIENT_ID) { Write-Warning "YouTube OAuth Client ID is missing. Sign in will be unavailable until the owner configures it." }
           Write-Host "Public Client IDs checked. OAuth client secrets are not embedded."
 
+      - name: Require OAuth IDs when publishing configured EXE manually
+        if: "github.event_name == 'workflow_dispatch' && inputs.publish_release"
+        shell: pwsh
+        run: |
+          if (-not $env:CLIPFORGE_TWITCH_CLIENT_ID) { throw "Set CLIPFORGE_TWITCH_CLIENT_ID in GitHub Actions Variables." }
+          if (-not $env:CLIPFORGE_YOUTUBE_CLIENT_ID) { throw "Set CLIPFORGE_YOUTUBE_CLIENT_ID in GitHub Actions Variables." }
+
       - name: Install frontend dependencies
         run: npm install --no-audit --no-fund
 
@@ -81,7 +94,7 @@ jobs:
           if-no-files-found: error
 
       - name: Publish ClipForge v0.4.1 release
-        if: "github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'release: ClipForge v0.4.1')"
+        if: "github.ref == 'refs/heads/main' && (startsWith(github.event.head_commit.message, 'release: ClipForge v0.4.1') || (github.event_name == 'workflow_dispatch' && inputs.publish_release))"
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v0.4.1
@@ -89,6 +102,7 @@ jobs:
           name: ClipForge v0.4.1 — Windows
           draft: false
           prerelease: true
+          overwrite_files: true
           fail_on_unmatched_files: true
           files: |
             src-tauri/target/release/bundle/nsis/*.exe
