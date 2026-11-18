@@ -42,7 +42,7 @@ function App(){
  const [publishTitle,setPublishTitle]=useState('');const [privacy,setPrivacy]=useState('private');const [publishAgreed,setPublishAgreed]=useState(false);
  const [publishResults,setPublishResults]=useState<Record<string,api.PublishResult>>({});
  const inform=useCallback((message:string,kind:'good'|'bad'='good')=>setToast({message,kind}),[]);
- const refresh=useCallback(async()=>{try{const [s,linked]=await Promise.all([api.getSnapshot(),api.connectedAccounts()]);setData(s);setSettings(s.settings);setAccounts(old=>linked.map(item=>({...item,selected:old.find(o=>o.id===item.id)?.selected??true})));}catch(err){inform(String(err),'bad')}},[inform]);
+ const refresh=useCallback(async()=>{try{const [s,linked]=await Promise.all([api.getSnapshot(),api.connectedAccounts()]);setData(s);setSettings(s.settings);setAccounts(old=>linked.map(item=>({...item,selected:old.find(o=>o.id===item.id)?.selected??false})));}catch(err){inform(String(err),'bad')}},[inform]);
  useEffect(()=>{void refresh();let cleanup:(()=>void)|undefined;void api.watchRefresh(()=>{void refresh()},(s)=>inform(s,'bad'),(s)=>inform(s,'good')).then(un=>cleanup=un);return()=>cleanup?.()},[refresh,inform]);
  useEffect(()=>{if(!toast)return;const id=setTimeout(()=>setToast(null),8000);return()=>clearTimeout(id)},[toast]);
  useEffect(()=>{let stop:(()=>void)|undefined;void api.watchUpdateProgress(p=>setUpdateProgress(p)).then(un=>stop=un);return()=>stop?.()},[]);
