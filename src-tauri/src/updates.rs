@@ -34,7 +34,7 @@ pub async fn check()->Result<UpdateStatus,String>{
   let tag=item["tag_name"].as_str().unwrap_or("").trim_start_matches('v');
   let Ok(v)=semver::Version::parse(tag)else{continue};
   let is_newer=v>current_v;
-  if result.latest_version.as_ref().and_then(|s|semver::Version::parse(s).ok()).is_some_and(|existing|existing>=v){continue}
+  if result.latest_version.as_ref().and_then(|s|semver::Version::parse(s).ok()).is_some_and(|existing|existing>=v.clone()){continue}
   let installer=item["assets"].as_array().and_then(|files|files.iter().find(|a|
    a["name"].as_str().is_some_and(|s|s.to_ascii_lowercase().ends_with("x64-setup.exe"))
   ));
