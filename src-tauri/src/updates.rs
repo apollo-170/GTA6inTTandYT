@@ -7,6 +7,28 @@ use std::{path::PathBuf, time::Duration};
 use tauri::{AppHandle, Emitter};
 use tokio::io::AsyncWriteExt;
 
+const UPDATE_SERVICE:&str="ClipForge.GitHubPrivateReleases";
+const UPDATE_USER:&str="read-only-token";
+fn token_entry()->Result<keyring::Entry,String>{
+ keyring::Entry::new(UPDATE_SERVICE,UPDATE_USER).map_err(|e|format!("Windows Credential Manager: {e}"))
+}
+fn get_token()->Option<String>{
+ token_entry().ok()?.get_password().ok().filter(|t|t.len()>=20)
+}
+pub fn configured()->bool{get_token().is_some()}
+pub async fn save_token(token:String)->Result<(),String>{
+ let key=token.trim().to_owned();
+ if key.len()<20||key.len()>512||key.chars().any(char::is_whitespace){
+  return Err("Нужен GitHub fine-grained token с доступом только на чтение релизов приватного репозитория".into())
+ }
+ tokio::task::spawn_blocking(move||token_entry()?.set_password(&key).map_err(|e|e.to_string()))
+  .await.map_err(|e|e.to_string())?
+}
+pub async fn clear_token()->Result<(),String>{
+ tokio::task::spawn_blocking(||token_entry()?.delete_credential().map_err(|e|e.to_string()))
+ .await.map_err(|e|e.to_string())?
+}
+
 pub const RELEASES_URL: &str = "https://github.com/apollo-170/GTA6inTTandYT/releases";
 const API_URL: &str = "https://api.github.com/repos/apollo-170/GTA6inTTandYT/releases?per_page=30";
 const DOWNLOAD_PREFIX: &str =
@@ -33,6 +55,7 @@ struct NewRelease {
     release_url: String,
     download_url: String,
     sha256: Option<String>,
+    asset_id: u64,
 }
 
 fn client() -> Result<reqwest::Client, String> {
@@ -54,9 +77,9 @@ fn valid_sha256(digest: &str) -> Option<String> {
     }
 }
 async fn releases(client: &reqwest::Client) -> Result<Option<Vec<Value>>, String> {
-    let response = client
-        .get(API_URL)
-        .send()
+    let mut request = client.get(API_URL);
+    if let Some(token)=get_token(){request=request.bearer_auth(token)}
+    let response = request.send()
         .await
         .map_err(|e| format!("Нет соединения с GitHub: {e}"))?;
     match response.status() {
@@ -96,6 +119,7 @@ fn latest_release(items: &[Value]) -> Option<NewRelease> {
             release_url: item["html_url"].as_str().unwrap_or(RELEASES_URL).to_owned(),
             download_url: link,
             sha256,
+            asset_id:asset["id"].as_u64().unwrap_or(0),
         });
     }
     best
@@ -112,7 +136,7 @@ pub async fn check() -> Result<UpdateStatus, String> {
         message: "Проверка обновлений ещё не выполнялась".into(),
     };
     let Some(items) = releases(&client()?).await? else {
-        result.message = "Репозиторий GitHub приватный. Проверка новых версий без публичного канала обновлений недоступна. Открой Releases в браузере, войдя в GitHub.".into();
+        result.message = "Исходники GitHub приватные. Для OTA укажи один раз fine-grained GitHub token с Contents: Read-only в настройках ClipForge. Пароли и токен не попадают в релизы.".into();
         return Ok(result);
     };
     let Some(latest) = latest_release(&items) else {
@@ -121,7 +145,7 @@ pub async fn check() -> Result<UpdateStatus, String> {
     };
     let current_version = Version::parse(&current).map_err(|e| e.to_string())?;
     result.available = latest.version > current_version;
-    result.can_install = result.available && latest.sha256.is_some();
+    result.can_install = result.available && latest.sha256.is_some() && latest.asset_id!=0;
     result.latest_version = Some(latest.version.to_string());
     result.release_url = latest.release_url;
     result.download_url = Some(latest.download_url);
@@ -167,7 +191,15 @@ pub async fn install(app: AppHandle) -> Result<String, String> {
             return Err("Недоверенная ссылка на обновление".into());
         }
         progress(&app, "Подключение к GitHub", 2);
-        let response = http.get(&latest.download_url).send().await.map_err(|e| e.to_string())?;
+        let response = if let Some(token)=get_token(){
+            let private_asset=format!("https://api.github.com/repos/apollo-170/GTA6inTTandYT/releases/assets/{}",latest.asset_id);
+            http.get(private_asset).bearer_auth(token)
+                .header("Accept","application/octet-stream")
+                .header("X-GitHub-Api-Version","2022-11-28")
+                .send().await.map_err(|e|format!("Загрузка приватного GitHub asset: {e}"))?
+        }else{
+            http.get(&latest.download_url).send().await.map_err(|e|e.to_string())?
+        };
         if !response.status().is_success() {
             return Err(format!("Не удалось скачать установщик: HTTP {}. Проверь доступ к релизу.", response.status()));
         }
