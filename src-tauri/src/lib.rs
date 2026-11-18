@@ -1,4 +1,4 @@
-mod models;mod db;mod scoring;mod twitch;mod export;mod publisher;mod vision;mod ffmpeg;mod social;mod updates;mod upload_post;mod autopipeline;mod tiktok_native;
+mod vod;mod models;mod db;mod scoring;mod twitch;mod export;mod publisher;mod vision;mod ffmpeg;mod social;mod updates;mod upload_post;mod autopipeline;mod tiktok_native;
 use chrono::Utc;
 use futures_util::StreamExt;
 use models::{Channel,Highlight,Settings,Snapshot,TwitchDevice,LoggedIn};
@@ -467,6 +467,6 @@ pub fn run(){
  let database=db::Database::open().expect("Cannot open ClipForge SQLite database");
  tauri::Builder::default().plugin(tauri_plugin_dialog::init()).plugin(tauri_plugin_opener::init())
  .manage(AppState{database:Mutex::new(database),auth:Mutex::new(Auth{token:String::new(),user:None,device:None}),detector:Mutex::new(Detector::default()),counts:Mutex::new(HashMap::new()),monitor:Arc::new(AtomicBool::new(false)),worker:Mutex::new(None),accounts:social::Accounts::new(),publishing:AtomicBool::new(false)})
- .invoke_handler(tauri::generate_handler![snapshot,save_settings,add_channel,remove_channel,update_channel,twitch_device_start,twitch_device_poll,disconnect_twitch,start_monitor,stop_monitor,demo_burst,create_twitch_clip,attach_video,render_highlight,analyze_highlight,publish_highlight,publish_batch,connected_accounts,upload_post_status,upload_post_save_key,upload_post_forget_key,upload_post_connect,upload_post_accounts,tiktok_native_status,tiktok_native_configure,tiktok_native_connect,tiktok_native_creator,github_update_token_status,github_update_token_save,github_update_token_forget,youtube_oauth_start,tiktok_oauth_start,disconnect_social_account,update_check,update_install,integration_diagnostics])
+ .invoke_handler(tauri::generate_handler![vod::vod_info,vod::vod_frame,vod::vod_cut,vod::vod_youtube_upload,snapshot,save_settings,add_channel,remove_channel,update_channel,twitch_device_start,twitch_device_poll,disconnect_twitch,start_monitor,stop_monitor,demo_burst,create_twitch_clip,attach_video,render_highlight,analyze_highlight,publish_highlight,publish_batch,connected_accounts,upload_post_status,upload_post_save_key,upload_post_forget_key,upload_post_connect,upload_post_accounts,tiktok_native_status,tiktok_native_configure,tiktok_native_connect,tiktok_native_creator,github_update_token_status,github_update_token_save,github_update_token_forget,youtube_oauth_start,tiktok_oauth_start,disconnect_social_account,update_check,update_install,integration_diagnostics])
  .run(tauri::generate_context!()).expect("Tauri startup failed");
 }
