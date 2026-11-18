@@ -125,6 +125,7 @@ async function handle(req,res){
   if(!code){html(res,400,'TikTok не вернул код авторизации.');return}
   try{
    const token=await oauthToken({code,grant_type:'authorization_code',redirect_uri:REDIRECT});
+   token.expires_at=now()+Number(token.expires_in||7200)*1000;
    const scopes=String(token.scope||'').split(',').map(s=>s.trim());
    if(!scopes.includes('video.upload')||!scopes.includes('user.info.basic'))throw Error('В TikTok не предоставлены запрошенные разрешения');
    const user=await getTikTokUser(token.access_token);
