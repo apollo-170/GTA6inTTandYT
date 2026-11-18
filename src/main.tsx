@@ -40,11 +40,13 @@ function App(){
  const [updatePanelOpen,setUpdatePanelOpen]=useState(false);const [updateInstalling,setUpdateInstalling]=useState(false);
  const [updateProgress,setUpdateProgress]=useState<api.UpdateProgress|null>(null);
  const [publishTitle,setPublishTitle]=useState('');const [privacy,setPrivacy]=useState('private');const [publishAgreed,setPublishAgreed]=useState(false);
+ const [publishResults,setPublishResults]=useState<Record<string,api.PublishResult>>({});
  const inform=useCallback((message:string,kind:'good'|'bad'='good')=>setToast({message,kind}),[]);
  const refresh=useCallback(async()=>{try{const [s,linked]=await Promise.all([api.getSnapshot(),api.connectedAccounts()]);setData(s);setSettings(s.settings);setAccounts(old=>linked.map(item=>({...item,selected:old.find(o=>o.id===item.id)?.selected??true})));}catch(err){inform(String(err),'bad')}},[inform]);
  useEffect(()=>{void refresh();let cleanup:(()=>void)|undefined;void api.watchRefresh(()=>{void refresh()},(s)=>inform(s,'bad'),(s)=>inform(s,'good')).then(un=>cleanup=un);return()=>cleanup?.()},[refresh,inform]);
  useEffect(()=>{if(!toast)return;const id=setTimeout(()=>setToast(null),8000);return()=>clearTimeout(id)},[toast]);
  useEffect(()=>{let stop:(()=>void)|undefined;void api.watchUpdateProgress(p=>setUpdateProgress(p)).then(un=>stop=un);return()=>stop?.()},[]);
+ useEffect(()=>{let stop:(()=>void)|undefined;void api.watchPublishProgress(p=>setPublishResults(prev=>({...prev,[p.account_id]:p}))).then(un=>stop=un);return()=>stop?.()},[]);
  useEffect(()=>{if(api.desktop)void api.integrationDiagnostics().then(setIntegrations).catch(()=>{});},[]);
  useEffect(()=>{if(!device)return;let running=true;const t=setInterval(()=>{void api.pollDevice().then(user=>{if(user&&running){setDevice(null);inform(`Twitch подключён: ${user.display_name}`);void refresh()}}).catch(e=>{if(running){setDevice(null);inform(String(e),'bad')}})},Math.max(5,device.interval)*1000);return()=>{running=false;clearInterval(t)}},[device,inform,refresh]);
  const run=useCallback(async(key:string,fn:()=>Promise<unknown>,success?:string)=>{setPending(key);try{await fn();if(success)inform(success);await refresh()}catch(err){inform(err instanceof Error?err.message:String(err),'bad')}finally{setPending('')}},[inform,refresh]);
@@ -62,9 +64,22 @@ function App(){
  const chooseDir=async()=>{try{const path=await api.pickDirectory();if(path)update('output_dir',path)}catch(e){inform(String(e),'bad')}};
  const attach=async()=>{if(!current)return;try{const path=await api.pickFile([{name:'Видео',extensions:['mp4','mov','mkv','webm']}]);if(path)await run('attach',()=>api.attachVideo(current.id,path),'Исходник прикреплён')}catch(e){inform(String(e),'bad')}};
  const start=()=>run('monitor',()=>data.monitoring?api.stopMonitor():api.startMonitor(),data.monitoring?'Мониторинг остановлен':'Мониторинг включён');
- const publishAll=async()=>{if(!current||!current.output_path)return inform('Сначала экспортируй видео','bad');if(!publishAgreed)return inform('Подтверди права и загрузку','bad');const targets=accounts.filter(a=>a.selected);if(!targets.length)return inform('Сначала подключи аккаунт и выбери его','bad');setPending('publish');try{for(const a of targets){try{const result=await api.publishVideo(current.id,a.id,publishTitle||current.title,privacy,true);inform(a.platform==='tiktok'? `TikTok: черновик передан (${result})`: `YouTube: ${result}`)}catch(e){inform(`${a.name}: ${String(e)}`,'bad')}}await refresh()}finally{setPending('')}};
+ const publishAll=async()=>{if(!current||!current.output_path)return inform('Сначала экспортируй видео','bad');if(!publishAgreed)return inform('Подтверди права и загрузку','bad');
+ const targets=accounts.filter(a=>a.selected);if(!targets.length)return inform('Выбери хотя бы один подключённый аккаунт','bad');
+ if(targets.length>20)return inform('Можно выбрать не больше 20 аккаунтов за одну отправку','bad');
+ setPublishResults(Object.fromEntries(targets.map(a=>[a.id,{account_id:a.id,account_name:a.name,platform:a.platform,state:'queued' as const,detail:'В очереди'}])));
+ setPending('publish');try{
+  const results=await api.publishBatch(current.id,targets.map(a=>a.id),publishTitle.trim()||current.title,privacy,true);
+  setPublishResults(Object.fromEntries(results.map(result=>[result.account_id,result])));
+  const ok=results.filter(r=>r.state==='success'||r.state==='draft').length;
+  inform(`Загрузка завершена: ${ok} из ${results.length}. Проверь результаты каждого аккаунта.`,ok?'good':'bad');
+  await refresh();
+ }catch(e){inform(String(e),'bad')}finally{setPending('')}
+ };
+ const selectGroup=(platform:'youtube'|'tiktok'|'all',selected:boolean)=>setAccounts(prev=>prev.map(a=>platform==='all'||a.platform===platform?{...a,selected}:a));
  const connectTwitch=()=>run('device',async()=>{await api.saveSettings(settings);const d=await api.beginDevice();setDevice(d);await api.externalUrl(d.verification_uri)},'Открыта авторизация Twitch; код для подтверждения показан в настройках');
  const connectYouTube=()=>run('youtube',async()=>{const url=await api.beginYouTube();await api.externalUrl(url)},'Открыта авторизация YouTube в браузере');
+ const connectTikTok=()=>run('tiktok',async()=>{const url=await api.beginTikTok();await api.externalUrl(url)},'Открыта авторизация TikTok в браузере');
  const checkForUpdates=async()=>{setCheckingUpdate(true);try{const status=await api.checkUpdates();setUpdateStatus(status);if(status.available)setUpdatePanelOpen(true);else inform(status.message)}catch(e){inform(String(e),'bad')}finally{setCheckingUpdate(false)}};
  const openUpdates=()=>{setUpdatePanelOpen(true);void checkForUpdates()};
  const installLatestUpdate=async()=>{if(!updateStatus?.can_install){void api.externalUrl(updateStatus?.release_url||'https://github.com/apollo-170/GTA6inTTandYT/releases');return}setUpdateInstalling(true);setUpdateProgress({stage:'Подготовка скачивания',percent:0});try{await api.installUpdate();inform('Установщик запускается. Подтверди обновление Windows.')}catch(e){setUpdateInstalling(false);inform(String(e),'bad')}};
@@ -75,7 +90,7 @@ function App(){
  const featureList=useMemo(()=>[{icon:MessageSquare,text:'Мониторинг чата',detail:'EventSub WebSocket'},{icon:Bolt,text:'Умный детектор',detail:'Анализ всплесков'},{icon:Video,text:'Формат Shorts',detail:'FFmpeg · 9:16'},{icon:Upload,text:'Публикация',detail:'YouTube + TikTok Draft'}],[]);
 
  return <div className="app-shell"><aside className="sidebar">
-  <div className="brand"><span className="brand-logo"><Play fill="white" size={21}/></span><div><b>ClipForge</b><small>AI CLIP STUDIO</small></div><span className="brand-version">v0.5.0</span></div>
+  <div className="brand"><span className="brand-logo"><Play fill="white" size={21}/></span><div><b>ClipForge</b><small>AI CLIP STUDIO</small></div><span className="brand-version">v0.6.0</span></div>
   <div className="nav-label">НАВИГАЦИЯ</div><nav className="navigation">{NAV.map(([value,label,Icon])=><button key={value} className={`nav-item ${tab===value?'active':''}`} onClick={()=>setTab(value)}><Icon size={19}/><span>{label}</span>{value==='highlights'&&data.highlights.length>0&&<i>{data.highlights.length}</i>}</button>)}</nav>
   <div className="sidebar-bottom"><div className="side-summary"><span className="status-dot"/><span><b>{data.monitoring?'Детектор включён':'Детектор остановлен'}</b><small>{data.monitoring?'Ожидание событий Twitch':'Готов к работе'}</small></span></div><div className="sidebar-tip"><div className="tip-mark"><Sparkles size={17}/></div><span><b>AI Highlight Studio</b><small>Создавай вертикальные ролики из лучших моментов.</small></span></div><div className="sidebar-footer"><span className="avatar-small">CF</span><span><b>Локальная студия</b><small>{typeBadge}</small></span><MoreVertical size={17}/></div></div>
  </aside>
