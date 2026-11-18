@@ -11,6 +11,7 @@ export type Snapshot = { settings:Settings; channels:Channel[]; highlights:Highl
 export type Device = {device_code:string;user_code:string;verification_uri:string;interval:number};
 export type ConnectedAccount={id:string;name:string;platform:'youtube'|'tiktok'};
 export type UpdateStatus={current_version:string;latest_version:string|null;available:boolean;release_url:string;download_url:string|null;message:string};
+export type IntegrationDiagnostics={twitch_configured:boolean;twitch_connected:boolean;youtube_configured:boolean;youtube_accounts:number;tiktok_configured:boolean;ffmpeg_ready:boolean;update_feed_public:boolean};
 const defaults:Settings={client_id:'',demo_mode:true,auto_clip:false,auto_export:false,threshold:68,cooldown_seconds:120,output_dir:'',banner_path:'',ffmpeg_path:'ffmpeg',vision_endpoint:'https://api.openai.com/v1/chat/completions',vision_model:''};
 export const desktop=isTauri();
 const key='clipforge-browser-demo-v1';
@@ -38,6 +39,10 @@ export async function analyzeVideo(id:number,apiKey:string){if(!desktop)throw Er
 export async function connectedAccounts():Promise<ConnectedAccount[]>{if(!desktop)return [];return invoke<ConnectedAccount[]>('connected_accounts')}
 export async function beginYouTube():Promise<string>{if(!desktop)throw Error('OAuth доступен в Windows-приложении');return invoke<string>('youtube_oauth_start')}
 export async function removeAccount(id:string):Promise<void>{if(!desktop)throw Error('Только в Windows-приложении');return invoke('disconnect_social_account',{id})}
+export async function integrationDiagnostics():Promise<IntegrationDiagnostics>{
+ if(!desktop)return {twitch_configured:false,twitch_connected:false,youtube_configured:false,youtube_accounts:0,tiktok_configured:false,ffmpeg_ready:false,update_feed_public:false};
+ return invoke<IntegrationDiagnostics>('integration_diagnostics')
+}
 export async function checkUpdates():Promise<UpdateStatus>{if(!desktop)return {current_version:'0.4.0',latest_version:null,available:false,release_url:'https://github.com/apollo-170/GTA6inTTandYT/releases',download_url:null,message:'Проверка обновлений доступна в Windows-приложении'};return invoke<UpdateStatus>('update_check')}
 export async function publishVideo(id:number,accountId:string,title:string,privacy:string,confirmed:boolean){if(!desktop)throw Error('Публикация доступна в Windows-приложении');return invoke<string>('publish_highlight',{id,accountId,title,privacy,confirmed})}
 export async function externalUrl(url:string){if(desktop){await openUrl(url)}else{window.open(url,'_blank','noopener,noreferrer')}}

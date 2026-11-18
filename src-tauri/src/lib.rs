@@ -255,6 +255,29 @@ async fn disconnect_social_account(app:AppHandle,id:String)->Result<(),String>{
 }
 #[tauri::command]
 async fn update_check()->Result<updates::UpdateStatus,String>{updates::check().await}
+#[derive(serde::Serialize)]
+struct IntegrationDiagnostics {
+ twitch_configured:bool,twitch_connected:bool,
+ youtube_configured:bool,youtube_accounts:usize,
+ tiktok_configured:bool,ffmpeg_ready:bool,update_feed_public:bool
+}
+#[tauri::command]
+async fn integration_diagnostics(state:State<'_,AppState>)->Result<IntegrationDiagnostics,String> {
+ let settings=state.database.lock().await.settings()?;
+ let path=ffmpeg::executable(&settings.ffmpeg_path);
+ let ffmpeg_ready=tokio::task::spawn_blocking(move|| {
+  std::process::Command::new(&path).arg("-version").output()
+   .map(|x|x.status.success()).unwrap_or(false)
+ }).await.map_err(|e|e.to_string())?;
+ let twitch_configured=!twitch_id(&settings).trim().is_empty();
+ let twitch_connected=state.auth.lock().await.user.is_some();
+ let youtube_configured=option_env!("CLIPFORGE_YOUTUBE_CLIENT_ID").is_some_and(|s|!s.trim().is_empty());
+ let youtube_accounts=state.accounts.list().await.iter().filter(|a|a.platform=="youtube").count();
+ Ok(IntegrationDiagnostics{
+  twitch_configured,twitch_connected,youtube_configured,youtube_accounts,
+  tiktok_configured:false,ffmpeg_ready,update_feed_public:false
+ })
+}
 
 #[tauri::command]
 async fn publish_highlight(app:AppHandle,id:i64,account_id:String,title:String,privacy:String,confirmed:bool)->Result<String,String>{
@@ -275,6 +298,6 @@ pub fn run(){
  let database=db::Database::open().expect("Cannot open ClipForge SQLite database");
  tauri::Builder::default().plugin(tauri_plugin_dialog::init()).plugin(tauri_plugin_opener::init())
  .manage(AppState{database:Mutex::new(database),auth:Mutex::new(Auth{token:String::new(),user:None,device:None}),detector:Mutex::new(Detector::default()),counts:Mutex::new(HashMap::new()),monitor:Arc::new(AtomicBool::new(false)),worker:Mutex::new(None),accounts:social::Accounts::new()})
- .invoke_handler(tauri::generate_handler![snapshot,save_settings,add_channel,remove_channel,update_channel,twitch_device_start,twitch_device_poll,disconnect_twitch,start_monitor,stop_monitor,demo_burst,create_twitch_clip,attach_video,render_highlight,analyze_highlight,publish_highlight,connected_accounts,youtube_oauth_start,disconnect_social_account,update_check])
+ .invoke_handler(tauri::generate_handler![snapshot,save_settings,add_channel,remove_channel,update_channel,twitch_device_start,twitch_device_poll,disconnect_twitch,start_monitor,stop_monitor,demo_burst,create_twitch_clip,attach_video,render_highlight,analyze_highlight,publish_highlight,connected_accounts,youtube_oauth_start,disconnect_social_account,update_check,integration_diagnostics])
  .run(tauri::generate_context!()).expect("Tauri startup failed");
 }
