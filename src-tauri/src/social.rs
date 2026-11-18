@@ -1,5 +1,5 @@
 use serde::Serialize;
-use std::{sync::atomic::{AtomicBool,Ordering}, time::Duration};
+use std::{sync::atomic::{AtomicBool,Ordering}, time::Duration, collections::HashSet};
 use tauri::{AppHandle,Emitter,Manager};
 use tokio::{io::{AsyncReadExt,AsyncWriteExt},net::TcpListener,sync::Mutex};
 use rand::{distributions::Alphanumeric,Rng};
@@ -11,9 +11,9 @@ use serde_json::Value;
 pub struct AccountView { pub id:String,pub name:String,pub platform:String }
 #[derive(Clone)]
 pub struct AccountToken { pub id:String,pub name:String,pub platform:String,pub access_token:String,pub refresh_token:String,pub expiry:i64 }
-pub struct Accounts { pub items:Mutex<Vec<AccountToken>>, pub youtube_pending:AtomicBool }
+pub struct Accounts { pub items:Mutex<Vec<AccountToken>>, pub youtube_pending:AtomicBool, pub tiktok_pending:AtomicBool, pub tiktok_pair:Mutex<Option<String>> }
 impl Accounts {
- pub fn new()->Self{Self{items:Mutex::new(Vec::new()),youtube_pending:AtomicBool::new(false)}}
+ pub fn new()->Self{Self{items:Mutex::new(Vec::new()),youtube_pending:AtomicBool::new(false),tiktok_pending:AtomicBool::new(false),tiktok_pair:Mutex::new(None)}}
  pub async fn list(&self)->Vec<AccountView>{self.items.lock().await.iter().map(|a|AccountView{id:a.id.clone(),name:a.name.clone(),platform:a.platform.clone()}).collect()}
  pub async fn disconnect(&self,id:&str)->bool{
   let mut accounts=self.items.lock().await;
@@ -110,7 +110,112 @@ async fn finish_youtube(listener:TcpListener,client_id:&str,redirect:&str,verifi
  let name=channel["snippet"]["title"].as_str().unwrap_or("YouTube-канал");
  Ok(AccountToken{id:format!("youtube:{id}"),name:name.to_owned(),platform:"youtube".into(),access_token:access,refresh_token:token["refresh_token"].as_str().unwrap_or("").to_owned(),expiry:chrono::Utc::now().timestamp()+token["expires_in"].as_i64().unwrap_or(3600)})
 }
+
+fn tiktok_bridge()->Result<String,String>{
+ let value=option_env!("CLIPFORGE_TIKTOK_BRIDGE_URL").filter(|s|!s.trim().is_empty())
+  .ok_or("TikTok OAuth пока не настроен разработчиком: нужен публичный HTTPS TikTok OAuth Bridge с одобренным приложением TikTok. Используй пока публикацию через Twitch.")?;
+ let url=url::Url::parse(value).map_err(|e|format!("Неправильный URL TikTok Bridge: {e}"))?;
+ if url.scheme()!="https" || url.host_str().is_none() || url.query().is_some() || url.fragment().is_some(){
+  return Err("TikTok Bridge должен быть HTTPS адресом без параметров".into())
+ }
+ Ok(value.trim_end_matches('/').to_owned())
+}
+fn bridge_http()->Result<reqwest::Client,String>{
+ reqwest::Client::builder().timeout(Duration::from_secs(20))
+  .redirect(reqwest::redirect::Policy::none())
+  .build().map_err(|e|e.to_string())
+}
+pub async fn begin_tiktok(app:AppHandle)->Result<String,String>{
+ let endpoint=tiktok_bridge()?;
+ let st=app.state::<crate::AppState>();
+ if st.accounts.tiktok_pending.swap(true,Ordering::SeqCst){
+  return Err("Вход TikTok уже запущен. Заверши авторизацию или повтори позже.".into())
+ }
+ let pair=st.accounts.tiktok_pair.lock().await.clone();
+ let result=async{
+  let http=bridge_http()?;
+  let reply=http.post(format!("{endpoint}/v1/session"))
+   .json(&serde_json::json!({"pair_token":pair}))
+   .send().await.map_err(|e|format!("TikTok Bridge недоступен: {e}"))?;
+  if !reply.status().is_success(){return Err(format!("TikTok Bridge: HTTP {}",reply.status()))}
+  let info:Value=reply.json().await.map_err(|e|e.to_string())?;
+  let token=info["pair_token"].as_str().filter(|s|s.len()>=30).ok_or("TikTok Bridge не вернул pairing token")?.to_string();
+  let authorize=info["authorize_url"].as_str().ok_or("TikTok Bridge не вернул ссылку входа")?;
+  let target=url::Url::parse(authorize).map_err(|e|e.to_string())?;
+  let trusted=url::Url::parse(&endpoint).map_err(|e|e.to_string())?;
+  if target.origin()!=trusted.origin() || target.scheme()!="https"{
+   return Err("TikTok Bridge вернул адрес другой платформы".into())
+  }
+  *st.accounts.tiktok_pair.lock().await=Some(token);
+  Ok(authorize.to_owned())
+ }.await;
+ match result{
+  Ok(authorize)=>{
+   tokio::spawn(async move {
+    let state=app.state::<crate::AppState>();
+    for _ in 0..90{
+     tokio::time::sleep(Duration::from_secs(2)).await;
+     if let Ok(names)=sync_tiktok(&state.accounts).await{
+      if !names.is_empty(){
+       let _=app.emit("clipforge:refresh",());
+       for name in names{let _=app.emit("clipforge:connected",format!("TikTok: {name} подключён"));}
+       break;
+      }
+     }
+    }
+    state.accounts.tiktok_pending.store(false,Ordering::SeqCst);
+   });
+   Ok(authorize)
+  },
+  Err(error)=>{st.accounts.tiktok_pending.store(false,Ordering::SeqCst);Err(error)}
+ }
+}
+async fn sync_tiktok(store:&Accounts)->Result<Vec<String>,String>{
+ let endpoint=tiktok_bridge()?;
+ let Some(pair)=store.tiktok_pair.lock().await.clone() else {return Ok(Vec::new())};
+ let response=bridge_http()?.post(format!("{endpoint}/v1/accounts"))
+  .json(&serde_json::json!({"pair_token":pair})).send().await.map_err(|e|e.to_string())?;
+ if !response.status().is_success(){return Err(format!("TikTok Bridge HTTP {}",response.status()))}
+ let payload:Value=response.json().await.map_err(|e|e.to_string())?;
+ let list=payload["accounts"].as_array().ok_or("Некорректный список аккаунтов TikTok")?;
+ let mut items=store.items.lock().await;
+ let old:HashSet<String>=items.iter().filter(|a|a.platform=="tiktok").map(|a|a.id.clone()).collect();
+ items.retain(|a|a.platform!="tiktok");
+ let mut new_names=Vec::new();
+ for item in list.iter().take(20){
+  let Some(id)=item["id"].as_str().filter(|x|x.starts_with("tiktok:") && x.len()<180) else {continue};
+  let name=item["name"].as_str().unwrap_or("TikTok").chars().take(80).collect::<String>();
+  if !old.contains(id){new_names.push(name.clone())}
+  items.push(AccountToken{id:id.to_owned(),name,platform:"tiktok".into(),
+   access_token:String::new(),refresh_token:String::new(),expiry:0});
+ }
+ Ok(new_names)
+}
+pub async fn disconnect_account(store:&Accounts,id:&str)->Result<bool,String>{
+ if !id.starts_with("tiktok:"){return Ok(store.disconnect(id).await)}
+ let Some(pair)=store.tiktok_pair.lock().await.clone() else {return Err("Переподключи TikTok".into())};
+ let endpoint=tiktok_bridge()?;
+ let reply=bridge_http()?.post(format!("{endpoint}/v1/remove"))
+  .json(&serde_json::json!({"pair_token":pair,"account_id":id}))
+  .send().await.map_err(|e|e.to_string())?;
+ if !reply.status().is_success(){return Err(format!("TikTok не отключён: HTTP {}",reply.status()))}
+ Ok(store.disconnect(id).await)
+}
+async fn tiktok_access(store:&Accounts,id:&str)->Result<String,String>{
+ let exists=store.items.lock().await.iter().any(|a|a.id==id&&a.platform=="tiktok");
+ if !exists{return Err("TikTok аккаунт отключён".into())}
+ let Some(pair)=store.tiktok_pair.lock().await.clone() else {return Err("Нужно заново подключить TikTok".into())};
+ let endpoint=tiktok_bridge()?;
+ let response=bridge_http()?.post(format!("{endpoint}/v1/access"))
+  .json(&serde_json::json!({"pair_token":pair,"account_id":id}))
+  .send().await.map_err(|e|format!("TikTok Bridge: {e}"))?;
+ if !response.status().is_success(){return Err(format!("TikTok токен недоступен: HTTP {}",response.status()))}
+ let body:Value=response.json().await.map_err(|e|e.to_string())?;
+ Ok(body["access_token"].as_str().filter(|s|!s.is_empty()).ok_or("TikTok Bridge не вернул access token")?.to_owned())
+}
+
 pub async fn token_for(store:&Accounts,id:&str)->Result<(String,String),String>{
+ if id.starts_with("tiktok:"){return Ok(("tiktok".into(),tiktok_access(store,id).await?))}
  let mut items=store.items.lock().await;
  let account=items.iter_mut().find(|a|a.id==id).ok_or("Аккаунт отключён. Войди заново")?;
  if account.platform=="youtube"&&account.expiry < chrono::Utc::now().timestamp()+90 {
