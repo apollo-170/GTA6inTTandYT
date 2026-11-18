@@ -73,3 +73,13 @@
 - Бесплатный TikTok через официальную публикацию Twitch с подтверждением
 - Платный Upload-Post перестал быть обязательным и скрыт в необязательных настройках
 - Сохранено OTA для приватного GitHub Releases с SHA-256
+
+## v0.8.0
+- Native TikTok Desktop Login Kit OAuth with PKCE and localhost callback (no paid third-party service)
+- TikTok Client Key/Secret and per-account rotated OAuth tokens stored in Windows Credential Manager
+- Multiple TikTok accounts, Direct Post (video.publish) or creator Inbox drafts (video.upload)
+- Native Content Posting API MP4 uploads, creator privacy validation and publish-status polling
+- Manual multi-account TikTok+YouTube posting, independent statuses and opted-in local automation pipeline
+- Updated TikTok configuration, privacy controls and account panels in polished responsive UI
+- Reuses existing private GitHub OTA installer, free YouTube integration and FFmpeg workflow
+- Public TikTok uploads remain subject to TikTok audit, granted permissions and platform restrictions

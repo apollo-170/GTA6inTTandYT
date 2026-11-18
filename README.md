@@ -159,3 +159,37 @@ ClipForge v0.7.0 теперь может проверять и устанавл�
 Старые возможности OTA для закрытого GitHub сохранены: токен только для чтения релизов в Windows Credential Manager, проверка версий и SHA-256 установщика, обновление после нажатия пользователя.
 
 **Важное ограничение:** это исходники и успешно собранный Windows preview, а не сквозной тест на реальных аккаунтах. Google OAuth может потребовать добавления пользователей в Testing; TikTok может ограничивать публикацию исходя из прав канала и возраста пользователя.
+
+
+## ClipForge v0.8.0 — native multi-account TikTok publishing (no paid services)
+
+ClipForge v0.8.0 includes a Windows-native integration with TikTok's official Desktop Login Kit and Content Posting API. This is **not** browser automation, cookie scraping, CAPTCHA bypass, or a way around TikTok's verification requirements. It is provided for authorized personal developer use; **public automatic TikTok posts require TikTok Developer approval and an audited client**.
+
+### Setup
+
+1. In [TikTok for Developers](https://developers.tiktok.com/), register your own application (subject to TikTok's eligibility requirements).
+2. Enable **Login Kit → Desktop**. Add this **exact Redirect URI**:
+   \`http://127.0.0.1:34865/callback/\`
+3. Enable **Content Posting API**. Apply for the scopes \`user.info.basic\` and either:
+   - \`video.upload\` to send videos to TikTok Inbox (user completes the post), or
+   - \`video.publish\` for Direct Post (subject to approval and audit for public visibility).
+4. In ClipForge → Публикация → TikTok, enter **Client Key** and **Client Secret** from your own Developer app once. They are saved only to **Windows Credential Manager**, not the frontend, SQLite, source files or releases. This personal setup is not an appropriate way to distribute one application's confidential Client Secret to many unrelated users.
+5. Select either **Direct Post** or **Черновики**, then click **Добавить TikTok-аккаунт**. TikTok authorization opens in your browser and returns to a temporary listener on \`127.0.0.1:34865\`. ClipForge uses OAuth \`state\` plus **PKCE** (TikTok's SHA256 hex challenge) to validate the callback.
+6. Repeat step 5 for each authorized TikTok account. Refresh/access tokens are stored individually in Windows Credential Manager and refreshed with rotated tokens when necessary. You may disconnect an account from ClipForge.
+7. Click **Права** for a connected TikTok profile to retrieve its latest creator privacy options. TikTok is the source of truth for permitted privacy and whether a public post is possible.
+
+### Publishing and automatic queue
+
+On **Публикация**, select any combination of TikTok and YouTube accounts (up to 20) and confirm the rights to the MP4, caption and audience settings. For TikTok, choose the audience (default: **SELF_ONLY**). ClipForge requests Creator Info from TikTok for each Direct Post attempt, verifies the selected audience is available and uses the official video/init endpoint. Files go to TikTok's own \`open-upload.tiktokapis.com\` upload URL; ClipForge queries publish status before reporting success, and preserves queued/draft/failed statuses instead of guessing.
+
+Automatic publishing uses the existing **Twitch → clip → FFmpeg Shorts → platform** pipeline when enabled by the owner, with explicit prior rights confirmation, selected target accounts and daily caps. Exact permissions and user approval requirements imposed by TikTok remain authoritative and may require interactive approval for a given post. The application never fakes authorization, bypasses platform controls or silently substitutes a public audience for a private one. If TikTok blocks or delays a post, the per-account status explains the issue. TikTok may also restrict posting based on creator age, account status or platform eligibility; respect these restrictions.
+
+If the app has only \`video.upload\`, ClipForge sends the file to **Inbox as a draft**; the TikTok user must complete posting manually. If your app is **unaudited**, TikTok Direct Post is restricted to **private** visibility. Approved \`video.publish\` + an audited client are prerequisites for normal public direct posting. The app will not work until you provide **your own TikTok Developer credentials and receive the required permissions**.
+
+### Known limitations
+
+- No TikTok Client Key or Secret is provided in the prebuilt EXE.
+- The TikTok native integration has been compiled in CI, but not verified against real TikTok accounts; an end-to-end authorization and posting test must be performed with an approved app.
+- TikTok public publishing and per-post consent must follow the current platform rules.
+- This uses your local computer, **no paid third-party publishing service**, but it does not imply that approval, account eligibility or TikTok limits can be skipped.
+- The optional legacy TikTok OAuth Bridge and paid Upload-Post connector remain in the repository but are not necessary for native personal TikTok publishing.
