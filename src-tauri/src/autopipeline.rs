@@ -43,7 +43,7 @@ pub async fn process(app:AppHandle,id:i64)->Result<(),String>{
  let linked=st.accounts.list().await;
  for target in &config.auto_targets{
   let (label,platform)=if target.starts_with("youtube:"){
-   (linked.iter().find(|a|a.id==*target).map(|a|a.name.clone()).unwrap_or_else(||"YouTube".into()),"youtube".to_string())
+   (linked.iter().find(|a|a.id.as_str()==target.as_str()).map(|a|a.name.clone()).unwrap_or_else(||"YouTube".into()),"youtube".to_string())
   }else{
    let (profile,platform)=crate::upload_post::target_parts(target)?;
    (profile.to_string(),platform.to_string())
