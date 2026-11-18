@@ -266,9 +266,7 @@ pub async fn publish(path:&str,id:&str,title:&str,privacy:&str,mode:&str)->Resul
   if !creator.privacy_levels.iter().any(|v|v==privacy){
    return Err(format!("У этого TikTok аккаунта недоступна видимость {privacy}. Выбери разрешённую в ClipForge."))
   }
- }else if privacy!="SELF_ONLY"{
-  return Err("У TikTok есть только разрешение на черновики. Для прямой публикации нужен video.publish".into())
- }
+ } // Inbox uploads have no audience preference; user finishes the post in TikTok.
  let chunk_size=file.len().min(10_000_000u64);
  let chunks=file.len().div_ceil(chunk_size);
  let source=json!({"source":"FILE_UPLOAD","video_size":file.len(),"chunk_size":chunk_size,"total_chunk_count":chunks});
