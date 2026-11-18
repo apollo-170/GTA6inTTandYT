@@ -46,3 +46,45 @@ pub async fn tiktok_draft(file:&str,token:&str)->Result<String,String>{
  }
  Ok(v["data"]["publish_id"].as_str().unwrap_or("draft queued").to_string())
 }
+
+
+/// Chunked resumable upload: reads from disk in bounded chunks, not into memory.
+pub async fn youtube_upload_streaming(file:&str,token:&str,title:&str,privacy:&str)->Result<String,String>{
+ if !["private","unlisted","public"].contains(&privacy){return Err("Неверная приватность".into())}
+ let meta=tokio::fs::metadata(file).await.map_err(|e|e.to_string())?;
+ let size=meta.len();
+ if size==0{return Err("Видео пустое".into())}
+ let client=reqwest::Client::builder().timeout(std::time::Duration::from_secs(180)).build().map_err(|e|e.to_string())?;
+ let init=client.post("https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status")
+  .bearer_auth(token).header("X-Upload-Content-Type","video/mp4").header("X-Upload-Content-Length",size.to_string())
+  .json(&json!({"snippet":{"title":title,"categoryId":"20"},"status":{"privacyStatus":privacy}}))
+  .send().await.map_err(|e|e.to_string())?;
+ if !init.status().is_success(){let status=init.status();return Err(format!("YouTube init {status}: {}",init.text().await.unwrap_or_default().chars().take(500).collect::<String>()))}
+ let upload_url=init.headers().get(LOCATION).ok_or("Нет URL загрузки")?.to_str().map_err(|e|e.to_string())?.to_string();
+ if !upload_url.starts_with("https://www.googleapis.com/upload/"){return Err("Непроверенный URL YouTube".into())}
+ let mut input=tokio::fs::File::open(file).await.map_err(|e|e.to_string())?;
+ let chunk=8*1024*1024usize;
+ let mut pos=0u64;
+ while pos<size{
+  let n=(size-pos).min(chunk as u64) as usize;
+  let mut buf=vec![0u8;n];
+  input.read_exact(&mut buf).await.map_err(|e|e.to_string())?;
+  let end=pos+n as u64-1;
+  let response=client.put(&upload_url).header(CONTENT_TYPE,"video/mp4").header(CONTENT_LENGTH,n.to_string())
+   .header(CONTENT_RANGE,format!("bytes {pos}-{end}/{size}")).body(buf).send().await.map_err(|e|e.to_string())?;
+  let status=response.status();
+  if status.is_success(){
+   let body=response.text().await.map_err(|e|e.to_string())?;
+   let v:Value=serde_json::from_str(&body).map_err(|e|e.to_string())?;
+   let id=v["id"].as_str().ok_or("YouTube не вернул ID видео")?;
+   return Ok(format!("https://www.youtube.com/watch?v={id}"))
+  }
+  if status.as_u16()!=308{return Err(format!("YouTube chunk HTTP {status}: {}",response.text().await.unwrap_or_default().chars().take(500).collect::<String>()))}
+  // Google returns 308 Resume Incomplete after accepting a chunk.
+  let received=response.headers().get("range").and_then(|v|v.to_str().ok()).and_then(|s|s.rsplit('-').next()).and_then(|s|s.parse::<u64>().ok());
+  let next=received.map(|n|n+1).unwrap_or(0);
+  if next!=end+1{return Err("Неполная загрузка чанка: повторить публикацию вручную".into())}
+  pos=next;
+ }
+ Err("YouTube не подтвердил загрузку".into())
+}
